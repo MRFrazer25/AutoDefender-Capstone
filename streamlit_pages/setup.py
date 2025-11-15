@@ -6,6 +6,7 @@ from pathlib import Path
 import streamlit as st
 
 from config import Config
+from utils.path_utils import sanitize_path
 
 
 def show() -> None:
@@ -21,34 +22,34 @@ def show() -> None:
     demo_clicked = st.button("Load demo configuration", type="secondary", use_container_width=True)
 
     if demo_clicked:
-        default_values = {
-            "log_path": "demo/example_suricata_log.json",
-            "db_path": "demo/demo_config.db",
-            "ollama_endpoint": "http://127.0.0.1:11434",
-            "ollama_model": "phi4-mini",
-            "suricata_rules_dir": "./suricata_rules",
-            "suricata_enabled": True,
-            "suricata_dry_run": True,
-        }
-        st.session_state.update(default_values)
-        st.session_state.setup_complete = True
+        try:
+            st.session_state.log_path = str(sanitize_path("demo/example_suricata_log.json"))
+            st.session_state.db_path = str(sanitize_path("demo/demo_config.db"))
+            st.session_state.ollama_endpoint = "http://127.0.0.1:11434"
+            st.session_state.ollama_model = "phi4-mini"
+            st.session_state.suricata_rules_dir = str(sanitize_path("./suricata_rules"))
+            st.session_state.suricata_enabled = True
+            st.session_state.suricata_dry_run = True
+            st.session_state.setup_complete = True
 
-        demo_db_path = Path(st.session_state.db_path)
-        demo_db_path.parent.mkdir(parents=True, exist_ok=True)
-        if not demo_db_path.exists():
-            from database import Database
+            demo_db_path = Path(st.session_state.db_path)
+            demo_db_path.parent.mkdir(parents=True, exist_ok=True)
+            if not demo_db_path.exists():
+                from database import Database
 
-            demo_db = Database(str(demo_db_path))
-            demo_db.close()
+                demo_db = Database(str(demo_db_path))
+                demo_db.close()
 
-        os.environ["SURICATA_LOG_PATH"] = st.session_state.log_path
-        os.environ["SURICATA_ENABLED"] = "true" if st.session_state.suricata_enabled else "false"
-        os.environ["SURICATA_RULES_DIR"] = st.session_state.suricata_rules_dir
-        os.environ["SURICATA_DRY_RUN"] = "true" if st.session_state.suricata_dry_run else "false"
-        os.environ["OLLAMA_ENDPOINT"] = st.session_state.ollama_endpoint
-        os.environ["OLLAMA_MODEL"] = st.session_state.ollama_model
+            os.environ["SURICATA_LOG_PATH"] = st.session_state.log_path
+            os.environ["SURICATA_ENABLED"] = "true" if st.session_state.suricata_enabled else "false"
+            os.environ["SURICATA_RULES_DIR"] = st.session_state.suricata_rules_dir
+            os.environ["SURICATA_DRY_RUN"] = "true" if st.session_state.suricata_dry_run else "false"
+            os.environ["OLLAMA_ENDPOINT"] = st.session_state.ollama_endpoint
+            os.environ["OLLAMA_MODEL"] = st.session_state.ollama_model
 
-        st.success("Demo configuration loaded. Review the fields and click Save configuration to apply.")
+            st.success("Demo configuration loaded. Review the fields and click Save configuration to apply.")
+        except ValueError as exc:
+            st.error(f"Unable to load demo configuration: {exc}")
 
     default_log_path = st.session_state.get(
         "log_path", config.DEFAULT_SURICATA_LOG_PATH
@@ -124,12 +125,21 @@ def show() -> None:
             st.session_state.setup_complete = False
             return
 
-        st.session_state.log_path = log_path.strip()
-        st.session_state.db_path = db_path.strip()
+        try:
+            sanitized_log_path = str(sanitize_path(log_path))
+            sanitized_db_path = str(sanitize_path(db_path))
+            sanitized_rules_dir = str(sanitize_path(rules_dir))
+        except ValueError as exc:
+            st.error(f"Invalid path: {exc}")
+            st.session_state.setup_complete = False
+            return
+
+        st.session_state.log_path = sanitized_log_path
+        st.session_state.db_path = sanitized_db_path
         st.session_state.ollama_endpoint = ollama_endpoint.strip()
         st.session_state.ollama_model = ollama_model.strip()
         st.session_state.suricata_enabled = suricata_enabled
-        st.session_state.suricata_rules_dir = rules_dir.strip()
+        st.session_state.suricata_rules_dir = sanitized_rules_dir
         st.session_state.suricata_dry_run = dry_run
         st.session_state.setup_complete = True
 

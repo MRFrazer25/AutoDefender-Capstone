@@ -9,8 +9,10 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import List
+
 from models import Threat, DetectionStats
 from database import Database
+from utils.path_utils import sanitize_path
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,12 @@ class Exporter:
         """Initialize the exporter."""
         self.database = database
     
+    def _prepare_output_path(self, output_path: str) -> Path:
+        """Sanitize and ensure the output path is ready for writing."""
+        path = sanitize_path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
     def export_threats_csv(self, threats: List[Threat], output_path: str) -> bool:
         """
         Export threats to CSV file.
@@ -34,7 +42,7 @@ class Exporter:
             True if successful, False otherwise
         """
         try:
-            path = Path(output_path)
+            path = self._prepare_output_path(output_path)
             with open(path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 
@@ -77,7 +85,7 @@ class Exporter:
             True if successful, False otherwise
         """
         try:
-            path = Path(output_path)
+            path = self._prepare_output_path(output_path)
             data = {
                 'export_timestamp': datetime.now().isoformat(),
                 'total_threats': len(threats),
@@ -122,7 +130,7 @@ class Exporter:
         """
         try:
             if format.lower() == 'csv':
-                path = Path(output_path)
+                path = self._prepare_output_path(output_path)
                 with open(path, 'w', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f)
                     writer.writerow(['Metric', 'Value'])
@@ -146,7 +154,7 @@ class Exporter:
                 return True
             else:
                 # JSON format
-                path = Path(output_path)
+                path = self._prepare_output_path(output_path)
                 data = {
                     'export_timestamp': datetime.now().isoformat(),
                     'total_threats': stats.total_threats,

@@ -7,6 +7,7 @@ import re
 from config import Config
 from database import Database
 from ip_manager import IPManager
+from utils.path_utils import sanitize_path
 
 
 def is_valid_ip(ip: str) -> bool:
@@ -28,7 +29,12 @@ def show() -> None:
 
     ip_manager = IPManager()
     config = Config.get_default()
-    db_path = st.session_state.get("db_path", config.db_path)
+    try:
+        db_path_value = st.session_state.get("db_path", config.db_path)
+        db_path = str(sanitize_path(db_path_value))
+    except ValueError as exc:
+        st.error(f"Invalid database path: {exc}")
+        return
     db = Database(db_path)
 
     col1, col2 = st.columns(2)

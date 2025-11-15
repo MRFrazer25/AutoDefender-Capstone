@@ -7,6 +7,7 @@ from datetime import datetime
 from config import Config
 from database import Database
 from suricata_manager import SuricataManager
+from utils.path_utils import sanitize_path
 
 
 def show() -> None:
@@ -14,14 +15,23 @@ def show() -> None:
     st.markdown('<div class="main-header">Action Management</div>', unsafe_allow_html=True)
 
     config = Config.get_default()
-    db_path = st.session_state.get("db_path", config.db_path)
+    try:
+        db_path_value = st.session_state.get("db_path", config.db_path)
+        db_path = str(sanitize_path(db_path_value))
+    except ValueError as exc:
+        st.error(f"Invalid database path: {exc}")
+        return
     db = Database(db_path)
 
     suricata_enabled = st.session_state.get("suricata_enabled", config.SURICATA_ENABLED)
     config.SURICATA_ENABLED = suricata_enabled
-    config.SURICATA_RULES_DIR = st.session_state.get(
-        "suricata_rules_dir", config.SURICATA_RULES_DIR
-    )
+    try:
+        config.SURICATA_RULES_DIR = str(
+            sanitize_path(st.session_state.get("suricata_rules_dir", config.SURICATA_RULES_DIR))
+        )
+    except ValueError:
+        st.error("Invalid Suricata rules directory configured.")
+        config.SURICATA_RULES_DIR = str(sanitize_path(config.SURICATA_RULES_DIR))
     config.SURICATA_DRY_RUN = st.session_state.get(
         "suricata_dry_run", config.SURICATA_DRY_RUN
     )

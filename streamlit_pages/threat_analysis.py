@@ -1,14 +1,17 @@
 """Threat analysis page with filtering and export."""
 
+from datetime import datetime, timedelta
+from pathlib import Path
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from datetime import datetime, timedelta
 
 from config import Config
 from database import Database
 from exporter import Exporter
 from filter import ThreatFilter
+from utils.path_utils import sanitize_path, sanitize_filename
 
 
 def show() -> None:
@@ -16,7 +19,12 @@ def show() -> None:
     st.markdown('<div class="main-header">Threat Analysis</div>', unsafe_allow_html=True)
 
     config = Config.get_default()
-    db_path = st.session_state.get("db_path", config.db_path)
+    try:
+        db_path_value = st.session_state.get("db_path", config.db_path)
+        db_path = str(sanitize_path(db_path_value))
+    except ValueError as exc:
+        st.error(f"Invalid database path: {exc}")
+        return
     db = Database(db_path)
     threat_filter = ThreatFilter()
 
@@ -185,22 +193,27 @@ def show() -> None:
 
             if st.button("Export"):
                 exporter = Exporter(db)
-                export_path = f"{export_filename}.{export_format.lower()}"
+                safe_name = sanitize_filename(export_filename) or sanitize_filename(
+                    f"threats_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                )
+                export_dir = Path("exports")
+                export_dir.mkdir(parents=True, exist_ok=True)
+                export_path = (export_dir / f"{safe_name}.{export_format.lower()}").resolve()
                 try:
                     if export_format == "CSV":
-                        success = exporter.export_threats_csv(threats, export_path)
+                        success = exporter.export_threats_csv(threats, str(export_path))
                     else:
-                        success = exporter.export_threats_json(threats, export_path)
+                        success = exporter.export_threats_json(threats, str(export_path))
 
                     if success:
                         st.success(
-                            f"Exported {len(threats)} threats to {export_path}."
+                            f"Exported {len(threats)} threats to {export_path.name}."
                         )
-                        with open(export_path, "r", encoding="utf-8") as handle:
+                        with export_path.open("r", encoding="utf-8") as handle:
                             st.download_button(
                                 label=f"Download {export_format}",
                                 data=handle.read(),
-                                file_name=export_path,
+                                file_name=export_path.name,
                                 mime=(
                                     "application/json"
                                     if export_format == "JSON"

@@ -21,6 +21,8 @@ ENV/
 autodefender.db
 *.db
 !demo/demo_config.db
+exports/
+backups/
 
 # Environment and secrets files
 .env

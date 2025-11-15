@@ -10,6 +10,7 @@ import streamlit as st
 
 from config import Config
 from database import Database
+from utils.path_utils import sanitize_path
 
 
 def show() -> None:
@@ -20,7 +21,12 @@ def show() -> None:
     )
 
     config = Config.get_default()
-    db_path = st.session_state.get("db_path", config.db_path)
+    try:
+        db_path_value = st.session_state.get("db_path", config.db_path)
+        db_path = str(sanitize_path(db_path_value))
+    except ValueError as exc:
+        st.error(f"Invalid database path: {exc}")
+        return
     db = Database(db_path)
 
     col1, col2, col3 = st.columns([2, 1, 1])
@@ -32,13 +38,18 @@ def show() -> None:
             help="Path to the Suricata eve.json log file.",
             placeholder="Example: C:\\Program Files\\Suricata\\log\\eve.json",
         )
-        st.session_state.log_path = log_path
+        try:
+            sanitized_log_path = str(sanitize_path(log_path))
+        except ValueError as exc:
+            st.error(f"Invalid log path: {exc}")
+            sanitized_log_path = log_path
+        st.session_state.log_path = sanitized_log_path
 
     with col2:
         monitoring = st.session_state.get("monitoring", False)
         if not monitoring:
             if st.button("Start monitoring", type="primary", use_container_width=True):
-                if Path(log_path).exists():
+                if Path(sanitized_log_path).exists():
                     st.session_state.monitoring = True
                     st.success("Monitoring started.")
                     st.rerun()

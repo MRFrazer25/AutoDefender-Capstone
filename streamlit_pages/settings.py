@@ -8,6 +8,7 @@ import streamlit as st
 from ai_explainer import AIExplainer
 from config import Config
 from database import Database
+from utils.path_utils import sanitize_path, sanitize_filename
 
 
 def show() -> None:
@@ -15,7 +16,11 @@ def show() -> None:
     st.markdown('<div class="main-header">Settings and Configuration</div>', unsafe_allow_html=True)
 
     config = Config.get_default()
-    db_path = st.session_state.get("db_path", config.db_path)
+    try:
+        db_path = str(sanitize_path(st.session_state.get("db_path", config.db_path)))
+    except ValueError:
+        db_path = str(sanitize_path(config.db_path))
+        st.session_state.db_path = db_path
 
     tabs = st.tabs([
         "General",
@@ -65,13 +70,19 @@ def show() -> None:
         )
 
         if st.button("Save general settings"):
-            os.environ["SURICATA_LOG_PATH"] = log_path
-            st.session_state.refresh_rate = refresh_rate
-            st.session_state.max_displayed_threats = max_displayed
-            st.session_state.port_scan_threshold = port_scan_threshold
-            st.session_state.suspicious_port_threshold = suspicious_port_threshold
-            st.success("General settings recorded for this session.")
-            st.info("Persist settings by adding them to your environment or config.ini file.")
+            try:
+                sanitized_log = str(sanitize_path(log_path))
+            except ValueError as exc:
+                st.error(f"Invalid log path: {exc}")
+            else:
+                os.environ["SURICATA_LOG_PATH"] = sanitized_log
+                st.session_state.log_path = sanitized_log
+                st.session_state.refresh_rate = refresh_rate
+                st.session_state.max_displayed_threats = max_displayed
+                st.session_state.port_scan_threshold = port_scan_threshold
+                st.session_state.suspicious_port_threshold = suspicious_port_threshold
+                st.success("General settings recorded for this session.")
+                st.info("Persist settings by adding them to your environment or config.ini file.")
 
     with tabs[1]:
         st.subheader("AI and Ollama configuration")
@@ -136,26 +147,31 @@ def show() -> None:
                 value=st.session_state.get("suricata_rules_dir", config.SURICATA_RULES_DIR),
                 placeholder="Example: ./suricata_rules",
             )
-            rules_path = Path(rules_dir)
-            if rules_path.exists():
-                st.success(f"Rules directory found at {rules_dir}.")
-                rules_file = rules_path / "autodefender_custom.rules"
-                if rules_file.exists():
-                    with open(rules_file, "r", encoding="utf-8") as handle:
-                        content = handle.read()
-                        st.info(
-                            f"{len([line for line in content.splitlines() if line.strip() and not line.strip().startswith('#')])} custom rule(s) found."
-                        )
-                        with st.expander("View custom rules"):
-                            st.code(content, language="text")
+            try:
+                rules_path = sanitize_path(rules_dir)
+            except ValueError as exc:
+                rules_path = None
+                st.error(f"Rules directory is invalid: {exc}")
             else:
-                st.warning("Rules directory does not exist yet.")
-                if st.button("Create rules directory"):
-                    try:
-                        rules_path.mkdir(parents=True, exist_ok=True)
-                        st.success("Directory created.")
-                    except Exception as exc:
-                        st.error(f"Unable to create directory: {exc}")
+                if rules_path.exists():
+                    st.success(f"Rules directory found at {rules_path}.")
+                    rules_file = rules_path / "autodefender_custom.rules"
+                    if rules_file.exists():
+                        with open(rules_file, "r", encoding="utf-8") as handle:
+                            content = handle.read()
+                            st.info(
+                                f"{len([line for line in content.splitlines() if line.strip() and not line.strip().startswith('#')])} custom rule(s) found."
+                            )
+                            with st.expander("View custom rules"):
+                                st.code(content, language="text")
+                else:
+                    st.warning("Rules directory does not exist yet.")
+                    if st.button("Create rules directory"):
+                        try:
+                            rules_path.mkdir(parents=True, exist_ok=True)
+                            st.success("Directory created.")
+                        except Exception as exc:
+                            st.error(f"Unable to create directory: {exc}")
 
             dry_run = st.checkbox(
                 "Dry-run mode",
@@ -175,16 +191,28 @@ def show() -> None:
             st.info("Suricata integration is currently disabled.")
 
         if st.button("Save Suricata settings"):
-            st.session_state.suricata_enabled = enable_suricata
-            st.session_state.suricata_rules_dir = rules_dir
-            st.session_state.suricata_dry_run = dry_run
-            os.environ["SURICATA_ENABLED"] = "true" if enable_suricata else "false"
-            os.environ["SURICATA_RULES_DIR"] = rules_dir
-            os.environ["SURICATA_DRY_RUN"] = "true" if dry_run else "false"
-            os.environ["AUTO_APPROVE_SURICATA"] = "true" if auto_approve else "false"
-            if suricata_config_path:
-                os.environ["SURICATA_CONFIG_PATH"] = suricata_config_path
-            st.success("Suricata settings recorded for this session.")
+            try:
+                sanitized_rules_dir = str(sanitize_path(rules_dir)) if rules_dir else str(
+                    sanitize_path(config.SURICATA_RULES_DIR)
+                )
+                sanitized_config_path = (
+                    str(sanitize_path(suricata_config_path))
+                    if suricata_config_path
+                    else ""
+                )
+            except ValueError as exc:
+                st.error(f"Invalid Suricata path: {exc}")
+            else:
+                st.session_state.suricata_enabled = enable_suricata
+                st.session_state.suricata_rules_dir = sanitized_rules_dir
+                st.session_state.suricata_dry_run = dry_run
+                os.environ["SURICATA_ENABLED"] = "true" if enable_suricata else "false"
+                os.environ["SURICATA_RULES_DIR"] = sanitized_rules_dir
+                os.environ["SURICATA_DRY_RUN"] = "true" if dry_run else "false"
+                os.environ["AUTO_APPROVE_SURICATA"] = "true" if auto_approve else "false"
+                if sanitized_config_path:
+                    os.environ["SURICATA_CONFIG_PATH"] = sanitized_config_path
+                st.success("Suricata settings recorded for this session.")
 
     with tabs[3]:
         st.subheader("Database management")
@@ -221,11 +249,16 @@ def show() -> None:
             if db_exists:
                 import shutil
                 from datetime import datetime
-                backup_name = f"autodefender_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+                backup_dir = Path("backups")
+                backup_dir.mkdir(parents=True, exist_ok=True)
+                backup_name = sanitize_filename(
+                    f"autodefender_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+                )
+                backup_path = backup_dir / backup_name
                 try:
-                    shutil.copy2(db_path, backup_name)
-                    st.success(f"Backup created: {backup_name}")
-                    with open(backup_name, "rb") as handle:
+                    shutil.copy2(db_path, backup_path)
+                    st.success(f"Backup created: {backup_path}")
+                    with open(backup_path, "rb") as handle:
                         st.download_button(
                             "Download backup",
                             handle.read(),
