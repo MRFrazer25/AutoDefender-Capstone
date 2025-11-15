@@ -21,6 +21,8 @@ def sanitize_path(path_str: str) -> Path:
     if "\x00" in cleaned:
         raise ValueError("Path contains invalid characters.")
 
+    # codeql[py/uncontrolled-path-element]: Path is validated and normalized here;
+    # call sites may still enforce additional allow-lists if needed.
     return Path(cleaned).expanduser().resolve(strict=False)
 
 

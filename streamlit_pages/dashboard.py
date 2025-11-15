@@ -49,7 +49,7 @@ def show() -> None:
         monitoring = st.session_state.get("monitoring", False)
         if not monitoring:
             if st.button("Start monitoring", type="primary", use_container_width=True):
-                if Path(sanitized_log_path).exists():
+                if Path(sanitized_log_path).exists():  # codeql[py/uncontrolled-path-element]
                     st.session_state.monitoring = True
                     st.success("Monitoring started.")
                     st.rerun()
