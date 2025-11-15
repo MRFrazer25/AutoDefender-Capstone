@@ -1,0 +1,47 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Runtime data files (user-specific)
+autodefender.db
+*.db
+!demo/demo_config.db
+
+# Environment and secrets files
+.env
+.env.local
+.streamlit/secrets.toml
+
+# Don't ignore ip_lists.json template (empty file for distribution)
+# User modifications will be tracked intentionally
+
+# Generated files
+demo/generated/
+demo/outputs/
+demo_config.db
+
+# Log files
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Suricata rules backups (timestamped backups)
+suricata_rules/*.rules.backup.*
