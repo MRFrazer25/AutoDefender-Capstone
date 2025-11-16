@@ -48,9 +48,11 @@ ollama serve  # Start Ollama server
 ```
 
 **Note:** On first run, AutoDefender will automatically create:
-- `autodefender.db` - SQLite database for threats and actions
-- `ip_lists.json` - IP whitelist/blacklist (starts empty)
+- `autodefender.db` - SQLite database for threats and actions (user-specific, not in repository)
+- `ip_lists.json` - IP whitelist/blacklist (starts empty, user-specific, not in repository)
 - `suricata_rules/` - Custom Suricata rules directory
+
+The demo database (`demo/demo_config.db`) is pre-populated and included in the repository - no setup needed to use it.
 
 ## Step-by-Step Setup (Non-Technical Friendly)
 
@@ -251,10 +253,12 @@ Demo features:
 
 ### Demo Configuration
 
-The project ships with a built-in demo dataset. To load it:
-- `demo/example_suricata_log.json` – sample Suricata log
-- `demo/demo_config.db` – demo SQLite database
+The project ships with a built-in demo dataset that works on both localhost and Streamlit Cloud:
+- `demo/example_suricata_log.json` – sample Suricata log file
+- `demo/demo_config.db` – pre-populated demo SQLite database (included in repository)
 - `demo/log_replayer.py` – optional tool to replay demo events
+
+**Note:** The demo database (`demo/demo_config.db`) is included in the repository and contains example/test IP addresses only (no personal information). It's ready to use immediately.
 
 In the Streamlit Setup page, click **Load demo configuration** to pre-fill:
 - Suricata log path: `demo/example_suricata_log.json`
@@ -264,7 +268,7 @@ In the Streamlit Setup page, click **Load demo configuration** to pre-fill:
 - Suricata rules directory: `./suricata_rules`
 - Suricata rule management enabled with dry-run mode
 
-Review the fields and click **Save configuration** to apply. Switch back to your real paths afterwards to monitor live data.
+Review the fields and click **Save configuration** to apply. The demo works immediately on both localhost and the hosted Streamlit app. Switch back to your real paths afterwards to monitor live data.
 
 Need more help with Suricata itself? Check the following resources:
 - Official docs: [https://docs.suricata.io/](https://docs.suricata.io/)
@@ -273,20 +277,23 @@ Need more help with Suricata itself? Check the following resources:
 
 ### Demo Database Features
 
-The demo database (`demo/demo_config.db`) includes realistic sample threats showcasing all of AutoDefender's capabilities:
+The demo database (`demo/demo_config.db`) is pre-populated and included in the repository. It contains realistic sample threats showcasing all of AutoDefender's capabilities:
 
 - **GeoIP-enriched threats**: Examples from Russia, Germany, USA with ISP and location data
 - **Diverse attack types**: SSH brute force, Tor exit node scans, data exfiltration attempts, MITM attacks
 - **Playbook actions**: Multi-step response workflows (drop rule + log + webhook) demonstrating action bundling
 - **Various action states**: RECOMMENDED, EXECUTED, REJECTED, and FAILED actions for UI testing
 - **Rich AI explanations**: Detailed, context-aware threat descriptions explaining what happened, why it matters, and what to do
+- **Safe test data**: All IP addresses are example/test IPs (private ranges, TEST-NET, etc.) - no personal information
 
-To refresh the demo database with new sample threats at any time:
+The demo database is ready to use immediately on both localhost and Streamlit Cloud. It includes 6 sample threats and 9 associated actions.
+
+To refresh the demo database with new sample threats at any time (optional):
 ```bash
 python tools/populate_demo_db.py
 ```
 
-This command regenerates `demo/demo_config.db` with 6 sample threats and 9 associated actions, perfect for testing and demonstrations.
+This command regenerates `demo/demo_config.db` with fresh sample data for testing and demonstrations.
 
 ### Slack / Teams Webhook Example (Optional)
 
@@ -352,12 +359,13 @@ export WEBHOOK_URL=https://your-webhook-url
 
 ### Quick Reference (Non-Technical)
 
+- **Try online**: [https://autodefenderhackathon.streamlit.app/](https://autodefenderhackathon.streamlit.app/) - Demo database is pre-loaded and ready to use
 - **Start Suricata**: open PowerShell → `cd "C:\Program Files\Suricata"` → `.\suricata.exe -c suricata.yaml -i "Wi-Fi"`
 - **Run AutoDefender UI**: in the project folder → `python -m streamlit run streamlit_app.py`
 - **Run CLI monitor**: `python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model phi4-mini`
-- **Load demo data**: Setup page → “Load demo configuration” → Save (switch back later by re-entering real paths).
+- **Load demo data**: Setup page → "Load demo configuration" → Save (works on both localhost and Streamlit Cloud)
 - **Replay demo log** (optional): `python demo/log_replayer.py demo/example_suricata_log.json --interval 0.5 --loop`
-- **Refresh demo database**: `python tools/populate_demo_db.py`
+- **Refresh demo database** (optional): `python tools/populate_demo_db.py` - Note: demo database is pre-populated in the repository
 - **Enable Slack/Teams alerts**: paste your webhook URL into the Setup page, then approve a `WEBHOOK_NOTIFY` action in Action Management.
 
 ### Suricata Integration (Agentic Features)
@@ -482,6 +490,7 @@ AutoDefender_Hackathon/
 ├── streamlit_pages/        # Streamlit page implementations
 ├── demo/
 │   ├── demo.py             # Interactive demo script
+│   ├── demo_config.db      # Pre-populated demo database (included in repository)
 │   ├── example_suricata_log.json
 │   ├── log_replayer.py     # Utility to replay events into eve.json
 │   ├── generated/          # Temporary files created during demo
