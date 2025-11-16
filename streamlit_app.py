@@ -113,6 +113,7 @@ def main() -> None:
         "Dashboard",
         "Threat Analysis",
         "Action Management",
+        "Playbook Editor",
         "IP Management",
         "Settings",
         "Documentation",
@@ -122,6 +123,7 @@ def main() -> None:
         "Dashboard",
         "Threat Analysis",
         "Action Management",
+        "Playbook Editor",
         "IP Management",
     }
     force_setup_warning = False
@@ -169,6 +171,10 @@ def main() -> None:
         from streamlit_pages import action_management
 
         action_management.show()
+    elif selected_page == "Playbook Editor":
+        from streamlit_pages import playbook_editor
+
+        playbook_editor.show()
     elif selected_page == "IP Management":
         from streamlit_pages import ip_management
 

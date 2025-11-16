@@ -29,8 +29,8 @@ backups/
 .env.local
 .streamlit/secrets.toml
 
-# Don't ignore ip_lists.json template (empty file for distribution)
-# User modifications will be tracked intentionally
+# User-specific IP lists
+ip_lists.json
 
 # Generated files
 demo/generated/

@@ -5,12 +5,15 @@ An AI-powered security tool that monitors Suricata network logs in real-time and
 ## Features
 
 - **Real-time Monitoring**: Watches Suricata `eve.json` log files and processes events as they occur
+- **Multi-Source Aggregation**: Monitor multiple Suricata instances or log sources simultaneously
 - **Historical Analysis**: Batch processes existing Suricata log files for threat detection
 - **AI-Powered Detection**: Uses Ollama to analyze threats and provide plain English explanations
+- **GeoIP Enrichment**: Automatic geographic context for external IPs (location, ISP, AS number)
 - **Threat Detection**: Identifies port scans, unusual traffic patterns, and suspicious activity
 - **Action Recommendations**: Suggests security actions based on threat severity
 - **Dual Interface**: Choose between Terminal UI (Rich-based TUI) or Web UI (Streamlit)
 - **Web Dashboard**: Modern, intuitive web interface with real-time monitoring, interactive charts, and action management
+- **Playbook Editor**: Create and customize response workflows directly from the browser
 - **Database Storage**: SQLite database for storing threats, actions, and statistics
 - **Threat Filtering**: Filter threats by severity, type, IP address, or date range
 - **Search Functionality**: Search threats by description, IP, or event type
@@ -18,6 +21,8 @@ An AI-powered security tool that monitors Suricata network logs in real-time and
 - **IP Management**: Whitelist trusted IPs and blacklist known malicious IPs
 - **Configurable AI Analysis**: Choose which threat severities to analyze with AI
 - **Agentic Suricata Integration**: AI-driven automatic Suricata rule generation with permission prompts and safety controls
+- **Action Playbooks**: Group multiple response steps (rule + log + webhook) into single approval prompts
+- **Webhook Notifications**: Optional Slack/Teams integration for approved threats (opt-in, privacy-first)
 - **Interactive Approvals**: Real-time CLI prompts for reviewing and approving AI-generated rules
 
 ## Installation
@@ -52,6 +57,8 @@ ollama serve  # Start Ollama server
    - [Git](https://git-scm.com/downloads)
    - [Suricata IDS](https://docs.suricata.io/en/latest/install.html) (follow the installer for your platform or use `docs/SURICATA_SETUP.md`)
    - [Ollama](https://ollama.ai/download) for local AI models
+   - Optional: Slack/MS Teams (or any webhook endpoint) if you want automated notifications (Microsoft Teams incoming webhooks work the same way as Slack)
+   - Optional: Slack/MS Teams (or any webhook endpoint) if you want automated notifications
 
 2. **Prepare Suricata**
    - Enable the `eve.json` output in `suricata.yaml` (already enabled by default)
@@ -78,10 +85,11 @@ ollama serve  # Start Ollama server
      `python -m streamlit run streamlit_app.py`
      1. The browser opens at `http://localhost:8501`
      2. Go to the **Setup** page and fill in:
-        - *Suricata eve.json path*: the full path to `eve.json`
+        - *Suricata eve.json path(s)*: the full path to `eve.json` (or multiple paths, one per line for aggregation)
         - *Database path*: leave default `autodefender.db` or point somewhere else
         - *Ollama endpoint*: `http://127.0.0.1:11434`
         - *Ollama model*: the model you pulled (e.g., `phi4-mini`)
+       - *(Optional)* Notification webhook URL: paste the Slack/Teams webhook if you want approved actions to ping that channel
         - Optional: enable Suricata rule management and pick a rules directory (default `./suricata_rules`)
      3. Click **Save configuration**. You can now navigate to Dashboard, Threat Analysis, etc.
      4. Need a quick demo? Use the **Load demo configuration** button on the Setup page. It auto-fills:
@@ -111,8 +119,10 @@ Hosted Streamlit link (update after deployment): `https://your-streamlit-app-url
 
 The UI will open at `http://localhost:8501` and provides:
 - Real-time dashboard with live threat monitoring
-- Threat analysis with filtering and export tools
-- Action management for approving AI-generated rules
+- Multi-source aggregation for monitoring multiple log files
+- Threat analysis with filtering, search, and export tools
+- Action management for approving AI-generated rules and playbooks
+- Playbook Editor for customizing response workflows
 - IP whitelist and blacklist management
 - Settings for Suricata, Ollama, and database options
 - Built-in documentation
@@ -259,10 +269,57 @@ Need more help with Suricata itself? Check the following resources:
 - Windows quick start and troubleshooting: `docs/SURICATA_SETUP.md`
 - General testing instructions with real Suricata logs: see `docs/SURICATA_SETUP.md` and the upstream [Suricata documentation portal](https://suricata.io/documentation/)
 
+### Demo Database Features
+
+The demo database (`demo/demo_config.db`) includes realistic sample threats showcasing all of AutoDefender's capabilities:
+
+- **GeoIP-enriched threats**: Examples from Russia, Germany, USA with ISP and location data
+- **Diverse attack types**: SSH brute force, Tor exit node scans, data exfiltration attempts, MITM attacks
+- **Playbook actions**: Multi-step response workflows (drop rule + log + webhook) demonstrating action bundling
+- **Various action states**: RECOMMENDED, EXECUTED, REJECTED, and FAILED actions for UI testing
+- **Rich AI explanations**: Detailed, context-aware threat descriptions explaining what happened, why it matters, and what to do
+
 To refresh the demo database with new sample threats at any time:
 ```bash
 python tools/populate_demo_db.py
 ```
+
+This command regenerates `demo/demo_config.db` with 6 sample threats and 9 associated actions, perfect for testing and demonstrations.
+
+### Slack / Teams Webhook Example (Optional)
+
+1. Create an **Incoming Webhook**:
+   - **Slack**: open your workspace settings → **Integrations → Incoming Webhook** → add new webhook and copy the URL (`https://hooks.slack.com/services/...`).
+   - **Microsoft Teams**:
+     1. In the Teams channel where you want alerts, click the **⋯** menu next to the channel name.
+     2. Choose **Connectors** → search for **Incoming Webhook** → click **Configure**.
+     3. Give the webhook a friendly name (e.g., “AutoDefender Alerts”) and optionally upload an icon.
+     4. Click **Create**, then copy the URL (`https://<region>.webhook.office.com/webhookb2/...`).
+2. Paste the webhook URL into the “Notification webhook URL” field on the Streamlit **Setup** page and click **Save configuration**.
+3. Open **Action Management**. When you approve a playbook step that says `WEBHOOK_NOTIFY`, AutoDefender sends a simple JSON payload (same format for Slack and Teams) with threat details such as severity, source IP, and description. Example payload:
+   ```json
+   {
+     "text": "[Playbook] Critical SSH brute force response executed",
+     "threat": {
+       "id": 42,
+       "severity": "CRITICAL",
+       "source_ip": "192.168.1.101",
+       "event_type": "alert",
+       "description": "Suricata Alert: SSH brute force attempts"
+     }
+   }
+   ```
+   - Slack will display the `text` field automatically.
+   - Microsoft Teams shows the same `text` content inside the channel message; you can optionally wrap it in an Adaptive Card by pointing the webhook to your own middleware.
+4. To disable notifications, clear the webhook field and save the Setup form. No data leaves your machine unless you explicitly configure the webhook.
+
+### Agentic Enhancements
+
+- **Playbook Actions**: AutoDefender bundles common responses (drop rule + log + webhook) into a single approval prompt. Approve once and all steps execute in order, keeping humans in the loop but reducing clicks.
+- **Playbook Editor**: Customize response workflows from the Streamlit UI. Define conditions (severity, keywords) and action sequences without editing JSON files manually.
+- **Webhook Notifications**: When you approve a playbook step with `WEBHOOK_NOTIFY`, the console sends a JSON payload to your configured webhook (e.g., Slack/Teams). Leave the webhook URL blank if you prefer to stay offline—no data leaves your machine by default.
+- **GeoIP Context**: Public IPs are automatically enriched with location, ISP, and network data. This context appears in AI explanations and webhook notifications.
+- **Multi-Source Monitoring**: Monitor multiple Suricata instances, archived logs, or distributed sensors by entering multiple file paths (one per line) in the Setup page.
 
 ## Configuration
 
@@ -288,7 +345,18 @@ export SURICATA_ENABLED=true
 export SURICATA_RULES_DIR=./suricata_rules
 export AUTO_APPROVE_SURICATA=false
 export SURICATA_DRY_RUN=false
+export WEBHOOK_URL=https://your-webhook-url
 ```
+
+### Quick Reference (Non-Technical)
+
+- **Start Suricata**: open PowerShell → `cd "C:\Program Files\Suricata"` → `.\suricata.exe -c suricata.yaml -i "Wi-Fi"`
+- **Run AutoDefender UI**: in the project folder → `python -m streamlit run streamlit_app.py`
+- **Run CLI monitor**: `python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model phi4-mini`
+- **Load demo data**: Setup page → “Load demo configuration” → Save (switch back later by re-entering real paths).
+- **Replay demo log** (optional): `python demo/log_replayer.py demo/example_suricata_log.json --interval 0.5 --loop`
+- **Refresh demo database**: `python tools/populate_demo_db.py`
+- **Enable Slack/Teams alerts**: paste your webhook URL into the Setup page, then approve a `WEBHOOK_NOTIFY` action in Action Management.
 
 ### Suricata Integration (Agentic Features)
 

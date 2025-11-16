@@ -22,11 +22,12 @@ class Threat:
     description: str
     raw_event: Dict
     ai_explanation: Optional[str] = None
+    metadata: Optional[Dict] = None
     id: Optional[int] = None
     
     def to_dict(self) -> Dict:
         """Convert threat to dictionary for database storage."""
-        return {
+        data = {
             'timestamp': self.timestamp.isoformat(),
             'source_ip': self.source_ip,
             'dest_ip': self.dest_ip,
@@ -37,6 +38,11 @@ class Threat:
             'raw_event': str(self.raw_event),
             'ai_explanation': self.ai_explanation
         }
+        # Store metadata as JSON string if present
+        if self.metadata:
+            import json
+            data['metadata'] = json.dumps(self.metadata)
+        return data
 
 
 @dataclass

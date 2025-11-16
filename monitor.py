@@ -20,6 +20,7 @@ from ai_explainer import AIExplainer
 from models import Threat, Action
 from config import Config
 from suricata_manager import SuricataManager
+from utils.geoip import enrich_threat_context
 
 logger = logging.getLogger(__name__)
 
@@ -285,6 +286,13 @@ class RealTimeMonitor:
         """Handle a detected threat."""
         self.threats_detected += 1
         logger.info(f"Threat detected: {threat.description}")
+        
+        # Enrich with geographic context if available
+        threat_dict = threat.__dict__.copy()
+        enriched = enrich_threat_context(threat_dict)
+        if "geo_context" in enriched:
+            threat.metadata = threat.metadata or {}
+            threat.metadata["geo_context"] = enriched["geo_context"]
         
         # Store in database
         threat_id = self.database.add_threat(threat)

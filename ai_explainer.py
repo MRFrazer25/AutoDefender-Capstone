@@ -26,10 +26,25 @@ class AIExplainer:
     
     def _initialize_client(self):
         """Initialize Ollama client and verify connection."""
+        from urllib.parse import urlparse
+        
+        # Extract host from endpoint URL
+        host = None
+        if self.config.ollama_endpoint:
+            parsed = urlparse(self.config.ollama_endpoint)
+            # Extract host:port (ollama Client expects format like "127.0.0.1:11434")
+            host = parsed.netloc or parsed.path
+            # If no port specified, default to 11434
+            if ':' not in host and parsed.port is None:
+                host = f"{host}:11434"
+        
         try:
+            # Create client with explicit host parameter
+            self.client = ollama.Client(host=host) if host else ollama.Client()
+            
             # Test connection by trying to list models
             try:
-                response = ollama.list()
+                response = self.client.list()
                 # Handle both dict and object response structures
                 if hasattr(response, 'models'):
                     models = response.models
@@ -48,15 +63,20 @@ class AIExplainer:
                 
                 if model_names:
                     logger.info(f"Connected to Ollama. Available models: {model_names}")
+                    self.available_models = model_names
                 else:
                     logger.info("Connected to Ollama")
+                    self.available_models = []
             except Exception as list_error:
                 logger.debug(f"Could not list models: {list_error}")
                 logger.info("Connected to Ollama")
+                self.available_models = []
         except Exception as e:
-            logger.warning(f"Could not connect to Ollama at {self.config.ollama_endpoint}: {e}")
+            logger.warning(f"Could not connect to Ollama at {self.config.ollama_endpoint or 'default'}: {e}")
             logger.warning("AI explanations will be unavailable. Make sure Ollama is running.")
             logger.warning(f"Hint: Start Ollama with 'ollama serve' or check {self.config.ollama_endpoint}")
+            self.client = None
+            self.available_models = []
     
     def explain_threat(self, threat: Threat, use_ai: bool = True) -> Optional[str]:
         """
@@ -101,21 +121,43 @@ class AIExplainer:
         
         try:
             # Build prompt with system instructions
-            system_prompt = "You are a cybersecurity expert. Explain security threats in simple, clear language for non-technical users. Keep responses to 2-3 sentences maximum. Be direct and actionable. Only provide the explanation, do not repeat the prompt or include any other text."
+            system_prompt = (
+                "You are a cybersecurity analyst explaining network security threats to IT administrators. "
+                "Your explanations should be clear, accurate, and actionable. Follow these guidelines:\n"
+                "1. Explain WHAT happened (the attack or suspicious activity)\n"
+                "2. Explain WHY it matters (the potential impact or risk)\n"
+                "3. Suggest WHAT TO DO (immediate response or investigation steps)\n"
+                "4. If geographic context is provided, mention the location and any relevance (e.g., known threat actors from that region)\n"
+                "5. Keep the explanation to 2-4 sentences, be direct and avoid speculation\n"
+                "6. Use specific technical terms when accurate, but explain them briefly\n"
+                "7. Focus on the immediate threat, not general security advice\n"
+                "8. Do not repeat the prompt or add any preamble - start directly with the explanation"
+            )
             user_prompt = self._build_prompt(threat)
             
+            # Check if client is available
+            if not self.client:
+                logger.warning("Ollama client not available, using fallback explanation")
+                return self._fallback_explanation(threat)
+            
             # Call Ollama with system and user prompts
-            response = ollama.generate(
+            response = self.client.generate(
                 model=self.config.ollama_model,
                 system=system_prompt,
                 prompt=user_prompt,
                 options={
-                    'temperature': 0.3,  # Lower temperature for more focused responses
-                    'num_predict': 150,  # Limit response length
+                    'temperature': 0.4,  # Balanced temperature for accuracy with some creativity
+                    'num_predict': 200,  # Allow slightly longer explanations for complex threats
                 }
             )
             
-            explanation = response.get('response', '').strip()
+            # Handle both dict and object responses
+            if isinstance(response, dict):
+                explanation = response.get('response', '').strip()
+            elif hasattr(response, 'response'):
+                explanation = response.response.strip()
+            else:
+                explanation = str(response).strip()
             
             # Clean up the response - remove any prompt text that might be included
             if explanation:
@@ -179,16 +221,62 @@ class AIExplainer:
             return self._fallback_explanation(threat)
     
     def _build_prompt(self, threat: Threat) -> str:
-        """Build prompt for Ollama."""
-        # Build concise prompt with key details
-        details = []
-        if threat.source_ip:
-            details.append(f"from {threat.source_ip}")
-        if threat.dest_port:
-            details.append(f"to port {threat.dest_port}")
-        details_str = " ".join(details) if details else "from an unknown source"
+        """Build detailed prompt for Ollama with all available context."""
+        # Start with severity and event type
+        prompt_parts = [
+            f"Threat detected: {threat.severity} severity {threat.event_type}",
+            f"Description: {threat.description}"
+        ]
         
-        prompt = f"A {threat.severity} severity {threat.event_type} threat was detected {details_str}. The issue is: {threat.description}. Explain what this means and why it matters in 2-3 simple sentences for a non-technical person."
+        # Add source information
+        if threat.source_ip:
+            source_info = f"Source IP: {threat.source_ip}"
+            
+            # Add geographic context if available
+            if threat.metadata and "geo_context" in threat.metadata:
+                geo = threat.metadata["geo_context"]
+                location = geo.get("location", "")
+                isp = geo.get("isp", "")
+                org = geo.get("org", "")
+                as_num = geo.get("as_number", "")
+                
+                geo_details = []
+                if location:
+                    geo_details.append(location)
+                if org and org != isp:
+                    geo_details.append(f"Org: {org}")
+                if isp and isp != "Unknown":
+                    geo_details.append(f"ISP: {isp}")
+                if as_num:
+                    geo_details.append(as_num)
+                
+                if geo_details:
+                    source_info += f" ({', '.join(geo_details)})"
+            
+            prompt_parts.append(source_info)
+        
+        # Add destination information
+        if threat.dest_ip and threat.dest_ip != threat.source_ip:
+            prompt_parts.append(f"Destination IP: {threat.dest_ip}")
+        if threat.dest_port:
+            prompt_parts.append(f"Destination Port: {threat.dest_port}")
+        
+        # Add timestamp context if recent
+        if threat.timestamp:
+            prompt_parts.append(f"Time: {threat.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        
+        # Combine all parts
+        context = "\n".join(prompt_parts)
+        
+        # Build final prompt with clear instructions
+        prompt = (
+            f"{context}\n\n"
+            f"Analyze this security threat and provide a clear explanation covering:\n"
+            f"1. What type of attack or suspicious activity this is\n"
+            f"2. Why it's a {threat.severity} severity concern and potential impact\n"
+            f"3. Recommended immediate actions for the security team\n"
+            f"Keep your response focused, professional, and 2-4 sentences."
+        )
         
         return prompt
     
@@ -248,32 +336,57 @@ class AIExplainer:
             return self._fallback_suricata_rule(threat)
         
         try:
-            # Build prompt for AI
+            # Build enhanced prompt for AI
             system_prompt = (
-                "You are a Suricata rule expert. Generate a valid Suricata drop rule "
-                "based on the threat information. Only output the rule itself, nothing else. "
-                "Use the format: drop ip <source_ip> any -> any any (msg:\"reason\"; sid:9000001; rev:1;)"
+                "You are a Suricata IDS rule expert. Your task is to generate a valid Suricata drop rule.\n"
+                "Rules must follow this exact syntax:\n"
+                "drop ip [source_ip] any -> any any (msg:\"[clear reason]\"; sid:[unique_id]; rev:1;)\n\n"
+                "Guidelines:\n"
+                "- Use 'drop ip' action to block all traffic from the source\n"
+                "- The msg field should clearly explain WHY this IP is being blocked (e.g., 'SSH brute force from Russia')\n"
+                "- Use SID in the 9000000-9999999 range (custom rules)\n"
+                "- Keep the msg concise but informative\n"
+                "- Output ONLY the rule line, no explanations or additional text"
             )
             
-            # Build threat context
-            details = []
+            # Build detailed threat context
+            context_parts = [
+                f"Severity: {threat.severity}",
+                f"Event Type: {threat.event_type}",
+                f"Description: {threat.description}",
+            ]
+            
             if threat.source_ip:
-                details.append(f"Source IP: {threat.source_ip}")
+                source_desc = f"Source IP: {threat.source_ip}"
+                # Add geographic context to help with msg field
+                if threat.metadata and "geo_context" in threat.metadata:
+                    geo = threat.metadata["geo_context"]
+                    location = geo.get("location", "")
+                    isp = geo.get("isp", "")
+                    if location:
+                        source_desc += f" (Location: {location})"
+                    if isp and isp != "Unknown":
+                        source_desc += f" (ISP: {isp})"
+                context_parts.append(source_desc)
+            
             if threat.dest_port:
-                details.append(f"Destination Port: {threat.dest_port}")
-            details.append(f"Severity: {threat.severity}")
-            details.append(f"Type: {threat.event_type}")
-            details.append(f"Description: {threat.description}")
+                context_parts.append(f"Target Port: {threat.dest_port}")
             
             user_prompt = (
-                f"Generate a Suricata drop rule for this threat:\n"
-                f"{', '.join(details)}\n\n"
-                f"The rule should block traffic from {threat.source_ip or 'the source'}. "
-                f"Use msg to describe why it's being blocked. Only output the rule, no explanation."
+                f"Generate a Suricata drop rule for this threat:\n\n"
+                f"{chr(10).join(context_parts)}\n\n"
+                f"Create a drop rule to block all traffic from {threat.source_ip or 'the source IP'}. "
+                f"The msg field should reference the attack type and location if known. "
+                f"Output only the complete Suricata rule."
             )
             
+            # Check if client is available
+            if not self.client:
+                logger.warning("Ollama client not available, using fallback rule")
+                return self._fallback_suricata_rule(threat)
+            
             # Call Ollama
-            response = ollama.generate(
+            response = self.client.generate(
                 model=self.config.ollama_model,
                 system=system_prompt,
                 prompt=user_prompt,
@@ -283,7 +396,13 @@ class AIExplainer:
                 }
             )
             
-            rule = response.get('response', '').strip()
+            # Handle both dict and object responses
+            if isinstance(response, dict):
+                rule = response.get('response', '').strip()
+            elif hasattr(response, 'response'):
+                rule = response.response.strip()
+            else:
+                rule = str(response).strip()
             
             # Clean up response - extract just the rule
             if rule:

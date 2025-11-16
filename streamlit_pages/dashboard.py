@@ -49,12 +49,16 @@ def show() -> None:
         monitoring = st.session_state.get("monitoring", False)
         if not monitoring:
             if st.button("Start monitoring", type="primary", use_container_width=True):
-                if Path(sanitized_log_path).exists():  # codeql[py/uncontrolled-path-element]
-                    st.session_state.monitoring = True
-                    st.success("Monitoring started.")
-                    st.rerun()
+                # Support multiple log paths (newline-separated)
+                log_paths = [p.strip() for p in sanitized_log_path.split('\n') if p.strip()]
+                missing_paths = [p for p in log_paths if not Path(p).exists()]  # codeql[py/uncontrolled-path-element]
+                
+                if missing_paths:
+                    st.error(f"Log file(s) not found: {', '.join(missing_paths)}")
                 else:
-                    st.error("The log file was not found.")
+                    st.session_state.monitoring = True
+                    st.success(f"Monitoring started for {len(log_paths)} source(s).")
+                    st.rerun()
         else:
             if st.button("Stop monitoring", type="secondary", use_container_width=True):
                 st.session_state.monitoring = False
@@ -132,20 +136,29 @@ def show() -> None:
 
             if threat_times:
                 time_df = pd.DataFrame({"timestamp": threat_times})
-                time_df["hour"] = time_df["timestamp"].dt.floor("h")
-                time_counts = (
-                    time_df.groupby("hour")
-                    .size()
-                    .reset_index(name="count")
-                    .sort_values("hour")
-                )
-                fig = px.line(
-                    time_counts,
-                    x="hour",
-                    y="count",
-                    labels={"hour": "Time", "count": "Threats"},
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                # Ensure timestamp column is datetime type
+                if not pd.api.types.is_datetime64_any_dtype(time_df["timestamp"]):
+                    time_df["timestamp"] = pd.to_datetime(time_df["timestamp"], errors='coerce')
+                # Drop any rows where time conversion failed
+                time_df = time_df.dropna(subset=["timestamp"])
+                
+                if not time_df.empty:
+                    time_df["hour"] = time_df["timestamp"].dt.floor("h")
+                    time_counts = (
+                        time_df.groupby("hour")
+                        .size()
+                        .reset_index(name="count")
+                        .sort_values("hour")
+                    )
+                    fig = px.line(
+                        time_counts,
+                        x="hour",
+                        y="count",
+                        labels={"hour": "Time", "count": "Threats"},
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No valid timestamp data available for timeline.")
             else:
                 st.info("Timestamp data is not available.")
         else:

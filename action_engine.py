@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import List, Optional
 from models import Threat, Action
 from config import Config
+from playbooks.manager import PlaybookManager
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class ActionEngine:
         """Initialize the action engine."""
         self.config = config or Config.get_default()
         self.pending_actions: List[Action] = []
+        self.playbook_manager = PlaybookManager()
     
     def recommend_actions(self, threat: Threat) -> List[Action]:
         """
@@ -68,6 +70,12 @@ class ActionEngine:
                 actions.append(action)
                 self.pending_actions.append(action)
         
+        playbook_actions = self.playbook_manager.generate_actions(threat)
+        if playbook_actions:
+            actions.extend(playbook_actions)
+            self.pending_actions.extend(playbook_actions)
+            logger.info(f"Matched {len(playbook_actions)} playbook action(s) for threat {threat.id}")
+
         logger.info(f"Generated {len(actions)} action recommendations for threat {threat.id}")
         return actions
     

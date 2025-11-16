@@ -40,9 +40,18 @@ class Database:
                 description TEXT NOT NULL,
                 raw_event TEXT,
                 ai_explanation TEXT,
+                metadata TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Migrate existing databases - add metadata column if it doesn't exist
+        try:
+            cursor.execute("SELECT metadata FROM threats LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Adding metadata column to existing threats table")
+            cursor.execute("ALTER TABLE threats ADD COLUMN metadata TEXT")
+            self.conn.commit()
         
         # Actions table
         cursor.execute("""
@@ -90,11 +99,17 @@ class Database:
     def add_threat(self, threat: Threat) -> int:
         """Add a threat to the database and return its ID."""
         cursor = self.conn.cursor()
+        
+        # Serialize metadata to JSON if present
+        metadata_json = None
+        if threat.metadata:
+            metadata_json = json.dumps(threat.metadata)
+        
         cursor.execute("""
             INSERT INTO threats (
                 timestamp, source_ip, dest_ip, dest_port, event_type,
-                severity, description, raw_event, ai_explanation
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                severity, description, raw_event, ai_explanation, metadata
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             threat.timestamp.isoformat(),
             threat.source_ip,
@@ -104,7 +119,8 @@ class Database:
             threat.severity,
             threat.description,
             json.dumps(threat.raw_event) if threat.raw_event else None,
-            threat.ai_explanation
+            threat.ai_explanation,
+            metadata_json
         ))
         self.conn.commit()
         threat_id = cursor.lastrowid
@@ -320,6 +336,18 @@ class Database:
             logger.warning(f"Failed to parse raw_event JSON for threat {row['id']}")
             raw_event = {}
         
+        # Parse metadata if present
+        metadata = None
+        try:
+            if row['metadata']:
+                try:
+                    metadata = json.loads(row['metadata'])
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse metadata JSON for threat {row['id']}")
+        except (KeyError, IndexError):
+            # Column doesn't exist or is not accessible - this is fine for old databases
+            pass
+        
         return Threat(
             id=row['id'],
             timestamp=datetime.fromisoformat(row['timestamp']),
@@ -330,7 +358,8 @@ class Database:
             severity=row['severity'],
             description=row['description'],
             raw_event=raw_event,
-            ai_explanation=row['ai_explanation']
+            ai_explanation=row['ai_explanation'],
+            metadata=metadata
         )
     
     def _row_to_action(self, row: sqlite3.Row) -> Action:

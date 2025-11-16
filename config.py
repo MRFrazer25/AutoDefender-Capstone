@@ -11,12 +11,15 @@ from typing import Optional
 class Config:
     """Configuration settings for AutoDefender."""
     
-    # Suricata log file paths
+    # Suricata log file paths (can be comma-separated for multiple sources)
     DEFAULT_SURICATA_LOG_PATH = "/var/log/suricata/eve.json"
     
     # Ollama settings
     OLLAMA_ENDPOINT = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", None)  # No default - user must specify
+
+    # Notification settings
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
     
     # Database settings
     DEFAULT_DB_PATH = "autodefender.db"

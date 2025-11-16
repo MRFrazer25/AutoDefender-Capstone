@@ -6,7 +6,48 @@ from datetime import datetime
 
 from config import Config
 from database import Database
+from notifications.webhook import send_webhook
 from suricata_manager import SuricataManager
+
+
+def _execute_additional_action(action, threat, db):
+    """Execute non-Suricata actions such as logging or webhook."""
+    now = datetime.now()
+    success = False
+    message = ""
+
+    if action.action_type == "WEBHOOK_NOTIFY":
+        payload = {
+            "text": action.description,
+            "threat": {
+                "id": threat.id,
+                "severity": threat.severity,
+                "source_ip": threat.source_ip,
+                "event_type": threat.event_type,
+                "description": threat.description,
+            },
+        }
+        
+        # Add geographic context if available
+        if threat.metadata and "geo_context" in threat.metadata:
+            geo = threat.metadata["geo_context"]
+            payload["threat"]["location"] = geo.get("location", "Unknown")
+            payload["threat"]["isp"] = geo.get("isp", "Unknown")
+        success = send_webhook(payload)
+        message = "Webhook notification sent." if success else "Webhook notification failed."
+    elif action.action_type == "LOG":
+        success = True
+        message = "Log action recorded."
+    else:
+        success = True
+        message = "Action marked as completed."
+
+    db.update_action_status(
+        action.id,
+        "EXECUTED" if success else "FAILED",
+        now if success else None,
+    )
+    return success, message
 from utils.path_utils import sanitize_path
 
 
@@ -112,27 +153,39 @@ def show() -> None:
                         if action.executed_at:
                             st.caption(f"Executed at {action.executed_at}")
 
-                    if action.status == "RECOMMENDED" and suricata_enabled and action.action_type == "SURICATA_DROP_RULE":
+                    if action.status == "RECOMMENDED":
                         with action_cols[1]:
-                            if st.button(
-                                "Approve",
-                                key=f"approve_{action.id}_{index}",
-                            ):
-                                try:
-                                    manager = SuricataManager(config)
-                                    if manager.add_custom_rule(action.description):
-                                        db.update_action_status(
-                                            action.id,
-                                            "EXECUTED",
-                                            datetime.now(),
-                                        )
-                                        st.success("Action approved and executed.")
+                            if action.action_type == "SURICATA_DROP_RULE":
+                                if suricata_enabled and st.button(
+                                    "Approve",
+                                    key=f"approve_{action.id}_{index}",
+                                ):
+                                    try:
+                                        manager = SuricataManager(config)
+                                        if manager.add_custom_rule(action.description):
+                                            db.update_action_status(
+                                                action.id,
+                                                "EXECUTED",
+                                                datetime.now(),
+                                            )
+                                            st.success("Action approved and executed.")
+                                            st.rerun()
+                                        else:
+                                            db.update_action_status(action.id, "FAILED")
+                                            st.error("Failed to apply the Suricata rule.")
+                                    except Exception as exc:
+                                        st.error(f"Rule approval failed: {exc}")
+                            else:
+                                if st.button(
+                                    "Execute",
+                                    key=f"execute_{action.id}_{index}",
+                                ):
+                                    success, message = _execute_additional_action(action, threat, db)
+                                    if success:
+                                        st.success(message)
                                         st.rerun()
                                     else:
-                                        db.update_action_status(action.id, "FAILED")
-                                        st.error("Failed to apply the Suricata rule.")
-                                except Exception as exc:
-                                    st.error(f"Rule approval failed: {exc}")
+                                        st.error(message or "Action execution failed.")
                     else:
                         action_cols[1].write(" ")
 

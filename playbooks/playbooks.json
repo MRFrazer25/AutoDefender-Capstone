@@ -1,0 +1,43 @@
+[
+  {
+    "id": "ssh_bruteforce",
+    "name": "Critical SSH Brute Force Response",
+    "conditions": {
+      "severity": ["CRITICAL", "HIGH"],
+      "keywords": ["ssh", "brute", "force"]
+    },
+    "steps": [
+      {
+        "type": "SURICATA_DROP_RULE",
+        "description": "Block SSH source IP in Suricata"
+      },
+      {
+        "type": "LOG",
+        "description": "Log SSH brute force incident for auditing"
+      },
+      {
+        "type": "WEBHOOK_NOTIFY",
+        "description": "Notify on-call channel about SSH brute force"
+      }
+    ]
+  },
+  {
+    "id": "http_scan",
+    "name": "HTTP Port Scan Playbook",
+    "conditions": {
+      "severity": ["HIGH", "MEDIUM"],
+      "keywords": ["http", "scan"]
+    },
+    "steps": [
+      {
+        "type": "LOG",
+        "description": "Record HTTP scan details"
+      },
+      {
+        "type": "WEBHOOK_NOTIFY",
+        "description": "Send advisory webhook about HTTP scan"
+      }
+    ]
+  }
+]
+

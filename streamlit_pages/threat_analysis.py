@@ -279,20 +279,33 @@ def show() -> None:
 
             if timeline_rows:
                 timeline_df = pd.DataFrame(timeline_rows)
-                timeline_df["hour"] = timeline_df["time"].dt.floor("h")
-                timeline_counts = (
-                    timeline_df.groupby(["hour", "severity"])
-                    .size()
-                    .reset_index(name="count")
-                )
-                fig = px.bar(
-                    timeline_counts,
-                    x="hour",
-                    y="count",
-                    color="severity",
-                    labels={"hour": "Time", "count": "Threats"},
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                # Ensure time column is datetime type
+                if not pd.api.types.is_datetime64_any_dtype(timeline_df["time"]):
+                    timeline_df["time"] = pd.to_datetime(timeline_df["time"], errors='coerce')
+                # Drop any rows where time conversion failed
+                timeline_df = timeline_df.dropna(subset=["time"])
+                
+                if not timeline_df.empty:
+                    timeline_df["hour"] = timeline_df["time"].dt.floor("h")
+                    timeline_counts = (
+                        timeline_df.groupby(["hour", "severity"])
+                        .size()
+                        .reset_index(name="count")
+                    )
+                else:
+                    timeline_counts = pd.DataFrame(columns=["hour", "severity", "count"])
+                
+                if not timeline_counts.empty:
+                    fig = px.bar(
+                        timeline_counts,
+                        x="hour",
+                        y="count",
+                        color="severity",
+                        labels={"hour": "Time", "count": "Threats"},
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No timeline data available for the selected threats.")
             else:
                 st.info("Timeline data is not available.")
 
