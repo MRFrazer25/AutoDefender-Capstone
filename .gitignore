@@ -35,7 +35,7 @@ ip_lists.json
 # Generated files
 demo/generated/
 demo/outputs/
-demo_config.db
+/demo_config.db
 
 # Log files
 *.log
