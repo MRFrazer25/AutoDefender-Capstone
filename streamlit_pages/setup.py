@@ -23,31 +23,35 @@ def show() -> None:
 
     if demo_clicked:
         try:
-            st.session_state.log_path = str(sanitize_path("demo/example_suricata_log.json"))
-            st.session_state.db_path = str(sanitize_path("demo/demo_config.db"))
+            # Use relative paths for demo - will be sanitized when used
+            st.session_state.log_path = "demo/example_suricata_log.json"
+            st.session_state.db_path = "demo/demo_config.db"
             st.session_state.ollama_endpoint = "http://127.0.0.1:11434"
             st.session_state.ollama_model = "phi4-mini"
-            st.session_state.suricata_rules_dir = str(sanitize_path("./suricata_rules"))
+            st.session_state.suricata_rules_dir = "./suricata_rules"
             st.session_state.suricata_enabled = True
             st.session_state.suricata_dry_run = True
             st.session_state.setup_complete = True
 
-            demo_db_path = Path(st.session_state.db_path)
+            # Ensure demo database exists
+            demo_db_path = Path("demo/demo_config.db")
             demo_db_path.parent.mkdir(parents=True, exist_ok=True)
             if not demo_db_path.exists():
                 from database import Database
-
                 demo_db = Database(str(demo_db_path))
                 demo_db.close()
 
+            # Set environment variables for immediate use
             os.environ["SURICATA_LOG_PATH"] = st.session_state.log_path
             os.environ["SURICATA_ENABLED"] = "true" if st.session_state.suricata_enabled else "false"
             os.environ["SURICATA_RULES_DIR"] = st.session_state.suricata_rules_dir
             os.environ["SURICATA_DRY_RUN"] = "true" if st.session_state.suricata_dry_run else "false"
             os.environ["OLLAMA_ENDPOINT"] = st.session_state.ollama_endpoint
             os.environ["OLLAMA_MODEL"] = st.session_state.ollama_model
+            os.environ["DB_PATH"] = st.session_state.db_path
 
-            st.success("Demo configuration loaded. Review the fields and click Save configuration to apply.")
+            st.success("Demo configuration loaded and active! You can now navigate to Dashboard or Threat Analysis to see the demo data.")
+            st.rerun()
         except ValueError as exc:
             st.error(f"Unable to load demo configuration: {exc}")
 
