@@ -88,16 +88,18 @@ def show() -> None:
     # Log path section with native file picker
     log_path_col1, log_path_col2 = st.columns([3, 1])
     with log_path_col1:
+        # Get current value from session state or default
+        current_log_path = st.session_state.get("log_path", default_log_path)
         log_path = st.text_area(
             "Suricata eve.json path(s)",
-            value=st.session_state.get("log_path", default_log_path),
+            value=current_log_path,
             height=80,
             placeholder="Example: C:\\Program Files\\Suricata\\log\\eve.json\nFor multiple sources, enter one path per line",
             key="log_path_input",
         )
-        # Update session state when user types
-        if "log_path_input" in st.session_state:
-            st.session_state.log_path = st.session_state.log_path_input
+        # Sync text area value with session state
+        if log_path != current_log_path:
+            st.session_state.log_path = log_path
     with log_path_col2:
         uploaded_log = st.file_uploader(
             "Browse files",
@@ -118,10 +120,12 @@ def show() -> None:
                 saved_path = upload_dir / uploaded_file.name
                 with open(saved_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
-                saved_paths.append(str(saved_path))
+                # Use absolute path and normalize for Windows
+                abs_path = saved_path.resolve()
+                saved_paths.append(str(abs_path))
             
             st.session_state.log_path = "\n".join(saved_paths)
-            st.success(f"File(s) saved. Path(s) auto-filled above.")
+            st.success(f"File(s) saved to: {upload_dir}")
             st.rerun()
     
     # Database path section with native file picker
@@ -151,8 +155,10 @@ def show() -> None:
             saved_path = upload_dir / uploaded_db.name
             with open(saved_path, "wb") as f:
                 f.write(uploaded_db.getbuffer())
-            st.session_state.db_path = str(saved_path)
-            st.success(f"File saved. Path auto-filled above.")
+            # Use absolute path and normalize for Windows
+            abs_path = saved_path.resolve()
+            st.session_state.db_path = str(abs_path)
+            st.success(f"File saved to: {upload_dir}")
             st.rerun()
 
     with st.form("setup_form"):
@@ -261,26 +267,40 @@ def show() -> None:
         "- Set the AUTODEFENDER_UI_PASSWORD environment variable to require a password."
     )
 
-    if st.session_state.get("log_path"):
+    # Validate log paths if any are configured
+    current_log_path = st.session_state.get("log_path", "")
+    if current_log_path and current_log_path.strip():
         # Handle multi-path input (newline-separated)
-        log_paths = [p.strip() for p in st.session_state.log_path.split('\n') if p.strip()]
+        log_paths = [p.strip() for p in current_log_path.split('\n') if p.strip()]
         missing_paths = []
+        existing_paths = []
         
         for log_path in log_paths:
-            path_obj = Path(log_path)
-            if not path_obj.exists():
+            # Sanitize path before checking
+            try:
+                sanitized = sanitize_path(log_path)
+                path_obj = Path(sanitized)
+                if path_obj.exists():
+                    existing_paths.append(log_path)
+                else:
+                    missing_paths.append(log_path)
+            except (ValueError, Exception):
+                # If sanitization fails, treat as missing
                 missing_paths.append(log_path)
         
         if missing_paths:
             if len(missing_paths) == len(log_paths):
                 st.warning(
                     "None of the specified log files exist yet. "
-                    "Make sure Suricata is configured to write to these paths."
+                    "Make sure Suricata is configured to write to these paths, "
+                    "or use the file browser to upload files for analysis."
                 )
             else:
                 st.warning(
                     f"Some log files do not exist yet: {', '.join(missing_paths)}. "
                     "Make sure Suricata is configured to write to these paths."
                 )
+        elif existing_paths:
+            st.success(f"Found {len(existing_paths)} log file(s). Ready for monitoring.")
 
 
