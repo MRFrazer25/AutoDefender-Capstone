@@ -135,6 +135,52 @@ def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict
         default_keywords = ""
         default_steps = []
     
+    # Initialize steps in session state (outside form)
+    form_key = f"playbook_form_{idx if idx is not None else 'new'}"
+    if f'editing_steps_{form_key}' not in st.session_state:
+        st.session_state[f'editing_steps_{form_key}'] = default_steps.copy() if default_steps else []
+    
+    # Step management UI (outside form)
+    st.markdown("#### Action Steps")
+    st.caption("Define the sequence of actions to execute when this playbook triggers.")
+    
+    # Display current steps
+    for i, step in enumerate(st.session_state[f'editing_steps_{form_key}']):
+        col1, col2, col3 = st.columns([2, 5, 1])
+        with col1:
+            st.text(step['type'])
+        with col2:
+            st.text(step['description'])
+        with col3:
+            if st.button("🗑️", key=f"del_step_{form_key}_{i}"):
+                st.session_state[f'editing_steps_{form_key}'].pop(i)
+                st.rerun()
+    
+    # Add new step section
+    st.markdown("**Add Action Step**")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        new_step_type = st.selectbox(
+            "Action Type",
+            options=ACTION_TYPES,
+            key=f"new_step_type_{form_key}",
+            help="SURICATA_DROP_RULE: Create Suricata rule | LOG: Record event | WEBHOOK_NOTIFY: Send alert"
+        )
+    with col2:
+        new_step_desc = st.text_input(
+            "Description",
+            key=f"new_step_desc_{form_key}",
+            help="What this step does. Example: Block SSH source IP in Suricata"
+        )
+    
+    if st.button("➕ Add Step", key=f"add_step_{form_key}"):
+        if new_step_type and new_step_desc:
+            st.session_state[f'editing_steps_{form_key}'].append({
+                'type': new_step_type,
+                'description': new_step_desc
+            })
+            st.rerun()
+    
     with st.form("playbook_form"):
         st.markdown("#### Basic Information")
         
@@ -166,48 +212,6 @@ def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict
             help="Optional. Playbook only triggers if threat description contains these keywords. Example: ssh, brute, force"
         )
         
-        st.markdown("#### Action Steps")
-        st.caption("Define the sequence of actions to execute when this playbook triggers.")
-        
-        # Initialize steps in session state
-        if 'editing_steps' not in st.session_state:
-            st.session_state.editing_steps = default_steps.copy() if default_steps else []
-        
-        # Display current steps
-        for i, step in enumerate(st.session_state.editing_steps):
-            col1, col2, col3 = st.columns([2, 5, 1])
-            with col1:
-                st.text(step['type'])
-            with col2:
-                st.text(step['description'])
-            with col3:
-                if st.button("🗑️", key=f"del_step_{i}"):
-                    st.session_state.editing_steps.pop(i)
-                    st.rerun()
-        
-        # Add new step section
-        st.markdown("**Add Action Step**")
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            new_step_type = st.selectbox(
-                "Action Type",
-                options=ACTION_TYPES,
-                help="SURICATA_DROP_RULE: Create Suricata rule | LOG: Record event | WEBHOOK_NOTIFY: Send alert"
-            )
-        with col2:
-            new_step_desc = st.text_input(
-                "Description",
-                help="What this step does. Example: Block SSH source IP in Suricata"
-            )
-        
-        if st.button("➕ Add Step"):
-            if new_step_type and new_step_desc:
-                st.session_state.editing_steps.append({
-                    'type': new_step_type,
-                    'description': new_step_desc
-                })
-                st.rerun()
-        
         # Form submission buttons
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
@@ -230,7 +234,7 @@ def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict
                     'severity': severities,
                     'keywords': keywords
                 },
-                'steps': st.session_state.editing_steps
+                'steps': st.session_state[f'editing_steps_{form_key}']
             }
             
             # Validate
@@ -256,7 +260,8 @@ def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict
                     st.success(f"Playbook '{pb_name}' saved successfully!")
                     st.session_state.creating_new = False
                     st.session_state.selected_playbook_idx = None
-                    st.session_state.editing_steps = []
+                    if f'editing_steps_{form_key}' in st.session_state:
+                        del st.session_state[f'editing_steps_{form_key}']
                     st.rerun()
         
         if delete_btn and idx is not None:
@@ -264,6 +269,7 @@ def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict
             if save_playbooks(all_playbooks):
                 st.success(f"Playbook deleted.")
                 st.session_state.selected_playbook_idx = None
-                st.session_state.editing_steps = []
+                if f'editing_steps_{form_key}' in st.session_state:
+                    del st.session_state[f'editing_steps_{form_key}']
                 st.rerun()
 
