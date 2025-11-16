@@ -7,6 +7,7 @@ import streamlit as st
 
 from config import Config
 from utils.path_utils import sanitize_path
+from streamlit_pages.file_browser import browse_file
 
 
 def show() -> None:
@@ -50,7 +51,20 @@ def show() -> None:
             os.environ["OLLAMA_MODEL"] = st.session_state.ollama_model
             os.environ["DB_PATH"] = st.session_state.db_path
 
-            st.success("Demo configuration loaded and active! You can now navigate to Dashboard or Threat Analysis to see the demo data.")
+            # Verify demo database has data
+            try:
+                from database import Database
+                demo_db = Database(str(demo_db_path))
+                demo_threats = demo_db.get_threats()
+                threat_count = len(demo_threats)
+                demo_db.close()
+                if threat_count > 0:
+                    st.success(f"Demo configuration loaded! Database has {threat_count} threats. Navigate to Dashboard or Threat Analysis to view them.")
+                else:
+                    st.warning("Demo database exists but appears empty. Run 'python tools/populate_demo_db.py' to populate it.")
+            except Exception as e:
+                st.warning(f"Could not verify demo database: {e}")
+            
             st.rerun()
         except ValueError as exc:
             st.error(f"Unable to load demo configuration: {exc}")
@@ -69,19 +83,72 @@ def show() -> None:
         "suricata_rules_dir", config.SURICATA_RULES_DIR
     )
 
-    with st.form("setup_form"):
-        st.subheader("Core paths")
+    # File browser for log path (outside form)
+    if st.session_state.get("show_file_browser_log", False):
+        with st.expander("File Browser - Select Log File", expanded=True):
+            selected = browse_file(
+                current_path=default_log_path,
+                file_types=[".json", ".log", ".txt"],
+                key_prefix="log_browser",
+            )
+            if selected:
+                st.session_state.log_path = selected
+                st.session_state.show_file_browser_log = False
+                st.success(f"Selected: {selected}")
+                st.rerun()
+    
+    # File browser for database path (outside form)
+    if st.session_state.get("show_file_browser_db", False):
+        with st.expander("File Browser - Select Database File", expanded=True):
+            selected = browse_file(
+                current_path=default_db_path,
+                file_types=[".db", ".sqlite", ".sqlite3"],
+                key_prefix="db_browser",
+            )
+            if selected:
+                st.session_state.db_path = selected
+                st.session_state.show_file_browser_db = False
+                st.success(f"Selected: {selected}")
+                st.rerun()
+
+    st.subheader("Core paths")
+    
+    # Log path section with browse button
+    log_path_col1, log_path_col2 = st.columns([3, 1])
+    with log_path_col1:
         log_path = st.text_area(
             "Suricata eve.json path(s)",
-            value=default_log_path,
+            value=st.session_state.get("log_path", default_log_path),
             height=80,
             placeholder="Example: C:\\Program Files\\Suricata\\log\\eve.json\nFor multiple sources, enter one path per line",
+            key="log_path_input",
         )
+        # Update session state when user types
+        if "log_path_input" in st.session_state:
+            st.session_state.log_path = st.session_state.log_path_input
+    with log_path_col2:
+        if st.button("Browse files", key="browse_log_btn", help="Select log file(s) from your system", use_container_width=True):
+            st.session_state.show_file_browser_log = True
+            st.rerun()
+    
+    # Database path section with browse button
+    db_path_col1, db_path_col2 = st.columns([3, 1])
+    with db_path_col1:
         db_path = st.text_input(
             "AutoDefender database path",
-            value=default_db_path,
+            value=st.session_state.get("db_path", default_db_path),
             placeholder="Example: autodefender.db",
+            key="db_path_input",
         )
+        # Update session state when user types
+        if "db_path_input" in st.session_state:
+            st.session_state.db_path = st.session_state.db_path_input
+    with db_path_col2:
+        if st.button("Browse files", key="browse_db_btn", help="Select database file from your system", use_container_width=True):
+            st.session_state.show_file_browser_db = True
+            st.rerun()
+
+    with st.form("setup_form"):
 
         st.subheader("AI service")
         ollama_endpoint = st.text_input(
@@ -119,6 +186,10 @@ def show() -> None:
         submitted = st.form_submit_button("Save configuration")
 
     if submitted:
+        # Get current values from session state (updated by inputs or file browser)
+        log_path = st.session_state.get("log_path", default_log_path)
+        db_path = st.session_state.get("db_path", default_db_path)
+        
         errors = []
 
         if not log_path.strip():
