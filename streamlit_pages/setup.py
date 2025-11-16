@@ -1,13 +1,13 @@
 """Setup page for initial configuration."""
 
 import os
+import tempfile
 from pathlib import Path
 
 import streamlit as st
 
 from config import Config
 from utils.path_utils import sanitize_path
-from streamlit_pages.file_browser import browse_file
 
 
 def show() -> None:
@@ -83,37 +83,9 @@ def show() -> None:
         "suricata_rules_dir", config.SURICATA_RULES_DIR
     )
 
-    # File browser for log path (outside form)
-    if st.session_state.get("show_file_browser_log", False):
-        with st.expander("File Browser - Select Log File", expanded=True):
-            selected = browse_file(
-                current_path=default_log_path,
-                file_types=[".json", ".log", ".txt"],
-                key_prefix="log_browser",
-            )
-            if selected:
-                st.session_state.log_path = selected
-                st.session_state.show_file_browser_log = False
-                st.success(f"Selected: {selected}")
-                st.rerun()
-    
-    # File browser for database path (outside form)
-    if st.session_state.get("show_file_browser_db", False):
-        with st.expander("File Browser - Select Database File", expanded=True):
-            selected = browse_file(
-                current_path=default_db_path,
-                file_types=[".db", ".sqlite", ".sqlite3"],
-                key_prefix="db_browser",
-            )
-            if selected:
-                st.session_state.db_path = selected
-                st.session_state.show_file_browser_db = False
-                st.success(f"Selected: {selected}")
-                st.rerun()
-
     st.subheader("Core paths")
     
-    # Log path section with browse button
+    # Log path section with native file picker
     log_path_col1, log_path_col2 = st.columns([3, 1])
     with log_path_col1:
         log_path = st.text_area(
@@ -127,11 +99,32 @@ def show() -> None:
         if "log_path_input" in st.session_state:
             st.session_state.log_path = st.session_state.log_path_input
     with log_path_col2:
-        if st.button("Browse files", key="browse_log_btn", help="Select log file(s) from your system", use_container_width=True):
-            st.session_state.show_file_browser_log = True
+        uploaded_log = st.file_uploader(
+            "Browse files",
+            type=["json", "log", "txt"],
+            help="Opens your system's file picker to select log file(s).",
+            key="upload_log",
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+        )
+        if uploaded_log:
+            # Save uploaded files and use their paths
+            saved_paths = []
+            upload_dir = Path(tempfile.gettempdir()) / "autodefender_uploads"
+            upload_dir.mkdir(exist_ok=True)
+            
+            files_to_process = uploaded_log if isinstance(uploaded_log, list) else [uploaded_log]
+            for uploaded_file in files_to_process:
+                saved_path = upload_dir / uploaded_file.name
+                with open(saved_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                saved_paths.append(str(saved_path))
+            
+            st.session_state.log_path = "\n".join(saved_paths)
+            st.success(f"File(s) saved. Path(s) auto-filled above.")
             st.rerun()
     
-    # Database path section with browse button
+    # Database path section with native file picker
     db_path_col1, db_path_col2 = st.columns([3, 1])
     with db_path_col1:
         db_path = st.text_input(
@@ -144,8 +137,22 @@ def show() -> None:
         if "db_path_input" in st.session_state:
             st.session_state.db_path = st.session_state.db_path_input
     with db_path_col2:
-        if st.button("Browse files", key="browse_db_btn", help="Select database file from your system", use_container_width=True):
-            st.session_state.show_file_browser_db = True
+        uploaded_db = st.file_uploader(
+            "Browse files",
+            type=["db", "sqlite", "sqlite3"],
+            help="Opens your system's file picker to select database file.",
+            key="upload_db",
+            label_visibility="collapsed",
+        )
+        if uploaded_db:
+            # Save uploaded file and use its path
+            upload_dir = Path(tempfile.gettempdir()) / "autodefender_uploads"
+            upload_dir.mkdir(exist_ok=True)
+            saved_path = upload_dir / uploaded_db.name
+            with open(saved_path, "wb") as f:
+                f.write(uploaded_db.getbuffer())
+            st.session_state.db_path = str(saved_path)
+            st.success(f"File saved. Path auto-filled above.")
             st.rerun()
 
     with st.form("setup_form"):
