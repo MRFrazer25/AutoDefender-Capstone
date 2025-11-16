@@ -50,14 +50,25 @@ def show() -> None:
         if not monitoring:
             if st.button("Start monitoring", type="primary", use_container_width=True):
                 # Support multiple log paths (newline-separated)
-                log_paths = [p.strip() for p in sanitized_log_path.split('\n') if p.strip()]
-                missing_paths = [p for p in log_paths if not Path(p).exists()]  # codeql[py/uncontrolled-path-element]
+                # Split and sanitize each path individually
+                raw_paths = [p.strip() for p in sanitized_log_path.split('\n') if p.strip()]
+                sanitized_paths = []
+                missing_paths = []
+                
+                for raw_path in raw_paths:
+                    try:
+                        sanitized = sanitize_path(raw_path)
+                        sanitized_paths.append(str(sanitized))
+                        if not sanitized.exists():
+                            missing_paths.append(str(sanitized))
+                    except ValueError:
+                        missing_paths.append(raw_path)
                 
                 if missing_paths:
                     st.error(f"Log file(s) not found: {', '.join(missing_paths)}")
                 else:
                     st.session_state.monitoring = True
-                    st.success(f"Monitoring started for {len(log_paths)} source(s).")
+                    st.success(f"Monitoring started for {len(sanitized_paths)} source(s).")
                     st.rerun()
         else:
             if st.button("Stop monitoring", type="secondary", use_container_width=True):
