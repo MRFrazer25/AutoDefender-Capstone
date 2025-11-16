@@ -2,6 +2,8 @@
 
 An AI-powered security tool that monitors Suricata network logs in real-time and analyzes historical log files to detect threats, provide AI-generated explanations, and recommend security actions.
 
+**Try it online**: [https://autodefenderhackathon.streamlit.app/](https://autodefenderhackathon.streamlit.app/)
+
 ## Features
 
 - **Real-time Monitoring**: Watches Suricata `eve.json` log files and processes events as they occur
@@ -115,7 +117,7 @@ Start the web interface:
 python -m streamlit run streamlit_app.py
 ```
 
-Hosted Streamlit link (update after deployment): `https://your-streamlit-app-url`
+**Hosted Streamlit App**: [https://autodefenderhackathon.streamlit.app/](https://autodefenderhackathon.streamlit.app/)
 
 The UI will open at `http://localhost:8501` and provides:
 - Real-time dashboard with live threat monitoring
