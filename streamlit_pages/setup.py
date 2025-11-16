@@ -88,6 +88,10 @@ def show() -> None:
             st.session_state.suricata_dry_run = True
             st.session_state.setup_complete = True
             
+            # Also update widget keys so text inputs display the new values
+            st.session_state.log_path_input = demo_log_path
+            st.session_state.db_path_input = demo_db_path
+            
             # Clear processed file tracking so demo paths work
             if "processed_log_files" in st.session_state:
                 del st.session_state["processed_log_files"]
@@ -134,8 +138,13 @@ def show() -> None:
     # Log path section with native file picker
     log_path_col1, log_path_col2 = st.columns([3, 1])
     with log_path_col1:
-        # Get current value from session state or default
-        current_log_path = st.session_state.get("log_path", default_log_path)
+        # Get current value - prioritize widget key, then session state, then default
+        # Check if widget key exists and has a value (not None and not empty)
+        widget_value = st.session_state.get("log_path_input")
+        if widget_value is not None and widget_value.strip():
+            current_log_path = widget_value
+        else:
+            current_log_path = st.session_state.get("log_path") or default_log_path
         log_path = st.text_area(
             "Suricata eve.json path(s)",
             value=current_log_path,
@@ -144,7 +153,7 @@ def show() -> None:
             key="log_path_input",
         )
         # Sync text area value with session state
-        if log_path != current_log_path:
+        if log_path:
             st.session_state.log_path = log_path
     with log_path_col2:
         uploaded_log = st.file_uploader(
@@ -192,15 +201,22 @@ def show() -> None:
     # Database path section with native file picker
     db_path_col1, db_path_col2 = st.columns([3, 1])
     with db_path_col1:
+        # Get current value - prioritize widget key, then session state, then default
+        # Check if widget key exists and has a value (not None and not empty)
+        widget_value = st.session_state.get("db_path_input")
+        if widget_value is not None and widget_value.strip():
+            current_db_path = widget_value
+        else:
+            current_db_path = st.session_state.get("db_path") or default_db_path
         db_path = st.text_input(
             "AutoDefender database path",
-            value=st.session_state.get("db_path", default_db_path),
+            value=current_db_path,
             placeholder="Example: autodefender.db",
             key="db_path_input",
         )
         # Update session state when user types
-        if "db_path_input" in st.session_state:
-            st.session_state.db_path = st.session_state.db_path_input
+        if db_path:
+            st.session_state.db_path = db_path
     with db_path_col2:
         uploaded_db = st.file_uploader(
             "Browse files",
