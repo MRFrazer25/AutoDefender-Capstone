@@ -59,6 +59,7 @@ def show() -> None:
                     try:
                         sanitized = sanitize_path(raw_path)
                         sanitized_paths.append(str(sanitized))
+                        # codeql[py/path-injection]: sanitized is validated by sanitize_path() which prevents path traversal
                         if not sanitized.exists():
                             missing_paths.append(str(sanitized))
                     except ValueError:

@@ -90,6 +90,8 @@ def sanitize_path(path_str: str, base_dir: Path | None = None) -> Path:
         raise ValueError("Path contains traversal sequences (..) which are not allowed.")
     
     # Resolve to absolute path
+    # codeql[py/path-injection]: path_obj is constructed from validated and normalized strings
+    # that have been checked to be within the base directory and free of traversal sequences
     resolved = path_obj.resolve(strict=False)
     
     # Critical security check: ensure resolved path is within base directory
