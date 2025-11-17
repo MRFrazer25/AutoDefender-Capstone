@@ -154,44 +154,31 @@ def show() -> None:
                 normalized_rules_path = None
                 st.error(f"Rules directory is invalid: {exc}")
             else:
-                if normalized_rules_path:
-                    safe_rules_path = os.path.realpath(normalized_rules_path) if os.path.exists(normalized_rules_path) else os.path.abspath(os.path.normpath(normalized_rules_path))
-                    if os.path.exists(safe_rules_path):
-                        st.success(f"Rules directory found at {safe_rules_path}.")
-                        # Use os.path.join with normalized string and constant
-                        rules_file_str = os.path.join(safe_rules_path, "autodefender_custom.rules")
-                        # Validate the final path to ensure it's still within safe directory
-                        try:
-                            sanitized_file = sanitize_path(rules_file_str)
-                            normalized_rules_file = os.path.abspath(os.path.normpath(sanitized_file))
-                            # Additional check: ensure it's still within the rules directory
-                            if not normalized_rules_file.startswith(safe_rules_path + os.sep) and normalized_rules_file != safe_rules_path:
-                                raise ValueError("Rules file path is outside rules directory")
-                        except ValueError:
-                            # If validation fails, path is invalid
-                            st.error("Invalid rules file path")
-                            normalized_rules_file = None
-                        
-                        if normalized_rules_file:
-                            safe_file_path = os.path.realpath(normalized_rules_file) if os.path.exists(normalized_rules_file) else os.path.abspath(os.path.normpath(normalized_rules_file))
-                            if os.path.exists(safe_file_path):
-                                with open(safe_file_path, "r", encoding="utf-8") as handle:
-                                    content = handle.read()
-                                    st.info(
-                                        f"{len([line for line in content.splitlines() if line.strip() and not line.strip().startswith('#')])} custom rule(s) found."
-                                    )
-                                    with st.expander("View custom rules"):
-                                        st.code(content, language="text")
-                        else:
-                            st.warning("Rules file not found.")
-                    else:
-                        st.warning("Rules directory does not exist yet.")
+                if normalized_rules_path and os.path.exists(normalized_rules_path):
+                    st.success(f"Rules directory found at {normalized_rules_path}.")
+                    rules_file_str = os.path.join(normalized_rules_path, "autodefender_custom.rules")
+                    try:
+                        sanitized_file = sanitize_path(rules_file_str)
+                        normalized_rules_file = os.path.abspath(os.path.normpath(sanitized_file))
+                        if not normalized_rules_file.startswith(normalized_rules_path + os.sep) and normalized_rules_file != normalized_rules_path:
+                            raise ValueError("Rules file path is outside rules directory")
+                    except ValueError:
+                        st.error("Invalid rules file path")
+                        normalized_rules_file = None
+                    
+                    if normalized_rules_file and os.path.exists(normalized_rules_file):
+                        with open(normalized_rules_file, "r", encoding="utf-8") as handle:
+                            content = handle.read()
+                            st.info(
+                                f"{len([line for line in content.splitlines() if line.strip() and not line.strip().startswith('#')])} custom rule(s) found."
+                            )
+                            with st.expander("View custom rules"):
+                                st.code(content, language="text")
                 else:
                     st.warning("Rules directory does not exist yet.")
                     if st.button("Create rules directory"):
                         try:
-                            safe_create_path = os.path.abspath(os.path.normpath(normalized_rules_path))
-                            os.makedirs(safe_create_path, exist_ok=True)
+                            os.makedirs(normalized_rules_path, exist_ok=True)
                             st.success("Directory created.")
                         except Exception as exc:
                             st.error(f"Unable to create directory: {exc}")
