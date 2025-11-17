@@ -75,7 +75,8 @@ class Exporter:
         """
         try:
             path_str = self._prepare_output_path(output_path)
-            with open(path_str, 'w', newline='', encoding='utf-8') as f:
+            safe_path = os.path.realpath(path_str) if os.path.exists(path_str) else os.path.abspath(os.path.normpath(path_str))
+            with open(safe_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f, quoting=csv.QUOTE_ALL)
                 
                 # Write header
@@ -118,6 +119,7 @@ class Exporter:
         """
         try:
             path_str = self._prepare_output_path(output_path)
+            safe_path = os.path.realpath(path_str) if os.path.exists(path_str) else os.path.abspath(os.path.normpath(path_str))
             data = {
                 'export_timestamp': datetime.now().isoformat(),
                 'total_threats': len(threats),
@@ -138,7 +140,7 @@ class Exporter:
                 }
                 data['threats'].append(threat_data)
             
-            with open(path_str, 'w', encoding='utf-8') as f:
+            with open(safe_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             
             logger.info(f"Exported {len(threats)} threats to {output_path}")
