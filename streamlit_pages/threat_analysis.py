@@ -202,6 +202,7 @@ def show() -> None:
                 export_path_str = str(export_dir / f"{safe_name}.{export_format.lower()}")
                 try:
                     safe_export_path = sanitize_path(export_path_str)
+                    safe_export_path = os.path.abspath(os.path.normpath(safe_export_path))
                     if export_format == "CSV":
                         success = exporter.export_threats_csv(threats, safe_export_path)
                     else:

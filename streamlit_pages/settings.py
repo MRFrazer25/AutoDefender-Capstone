@@ -149,6 +149,7 @@ def show() -> None:
             )
             try:
                 normalized_rules_path = sanitize_path(rules_dir)
+                normalized_rules_path = os.path.abspath(os.path.normpath(normalized_rules_path))
             except ValueError as exc:
                 normalized_rules_path = None
                 st.error(f"Rules directory is invalid: {exc}")
@@ -160,6 +161,7 @@ def show() -> None:
                     # Validate the final path to ensure it's still within safe directory
                     try:
                         normalized_rules_file = sanitize_path(rules_file_str)
+                        normalized_rules_file = os.path.abspath(os.path.normpath(normalized_rules_file))
                         # Additional check: ensure it's still within the rules directory
                         if not normalized_rules_file.startswith(normalized_rules_path + os.sep) and normalized_rules_file != normalized_rules_path:
                             raise ValueError("Rules file path is outside rules directory")

@@ -31,11 +31,12 @@ class Exporter:
         Returns validated path as normalized string.
         """
         normalized_path = sanitize_path(output_path)
+        safe_path = os.path.abspath(os.path.normpath(normalized_path))
         # Use os.path operations for directory creation
-        parent_dir = os.path.dirname(normalized_path)
+        parent_dir = os.path.dirname(safe_path)
         if parent_dir:
             os.makedirs(parent_dir, exist_ok=True)
-        return normalized_path
+        return safe_path
 
     def export_threats_csv(self, threats: List[Threat], output_path: str) -> bool:
         """
