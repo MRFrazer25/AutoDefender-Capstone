@@ -329,15 +329,20 @@ def analyze_mode(config: Config, file_paths: list,
     # Export if requested
     if export_path:
         try:
-            safe_output_path = sanitize_path(export_path)
+            # Extract just the filename from the path
+            from utils.path_utils import sanitize_filename
+            filename = os.path.basename(export_path) or f"threats_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{export_format.lower()}"
+            if not filename.endswith(('.csv', '.json')):
+                filename = f"{sanitize_filename(filename)}.{export_format.lower()}"
+            
             exporter = Exporter(analyzer.database)
             if export_format.lower() == 'csv':
-                success = exporter.export_threats_csv(filtered_threats, safe_output_path)
+                success = exporter.export_threats_csv(filtered_threats, filename)
             else:
-                success = exporter.export_threats_json(filtered_threats, safe_output_path)
+                success = exporter.export_threats_json(filtered_threats, filename)
             
             if success:
-                console.print(f"[green][OK][/green] Exported {len(filtered_threats)} threats to {safe_output_path}")
+                console.print(f"[green][OK][/green] Exported {len(filtered_threats)} threats to exports/{filename}")
             else:
                 console.print("[red][X][/red] Failed to export threats")
                 console.print("[yellow]Hint:[/yellow] Check file permissions and disk space")

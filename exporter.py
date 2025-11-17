@@ -13,9 +13,12 @@ from typing import List
 
 from models import Threat, DetectionStats
 from database import Database
-from utils.path_utils import sanitize_path
+from utils.path_utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
+
+# Fixed exports directory - all exports must be within this directory
+EXPORTS_DIR = os.path.join(os.getcwd(), "exports")
 
 
 class Exporter:
@@ -25,18 +28,39 @@ class Exporter:
         """Initialize the exporter."""
         self.database = database
     
-    def _prepare_output_path(self, output_path: str) -> str:
-        """Sanitize and ensure the output path is ready for writing.
+    def _prepare_output_path(self, filename: str) -> str:
+        """Prepare output path within the exports directory.
         
-        Returns validated path as normalized string.
+        Args:
+            filename: Filename (not full path) for the export file
+            
+        Returns:
+            Full path within exports directory
+            
+        Raises:
+            ValueError: If filename contains path traversal or invalid characters
         """
-        normalized_path = sanitize_path(output_path)
-        safe_path = os.path.abspath(os.path.normpath(normalized_path))
-        # Use os.path operations for directory creation
-        parent_dir = os.path.dirname(safe_path)
-        if parent_dir:
-            os.makedirs(parent_dir, exist_ok=True)
-        return safe_path
+        # Sanitize filename to remove any path components
+        safe_filename = sanitize_filename(filename, default="export")
+        
+        # Remove any directory separators that might have been in the filename
+        safe_filename = os.path.basename(safe_filename)
+        
+        # Construct path within exports directory
+        output_path = os.path.join(EXPORTS_DIR, safe_filename)
+        
+        # Normalize and validate the path is within exports directory
+        normalized_path = os.path.abspath(os.path.normpath(output_path))
+        exports_dir_normalized = os.path.abspath(os.path.normpath(EXPORTS_DIR))
+        
+        # Ensure the path is within exports directory
+        if not normalized_path.startswith(exports_dir_normalized + os.sep) and normalized_path != exports_dir_normalized:
+            raise ValueError(f"Export path {normalized_path} is outside exports directory")
+        
+        # Create exports directory if it doesn't exist
+        os.makedirs(EXPORTS_DIR, exist_ok=True)
+        
+        return normalized_path
 
     def export_threats_csv(self, threats: List[Threat], output_path: str) -> bool:
         """

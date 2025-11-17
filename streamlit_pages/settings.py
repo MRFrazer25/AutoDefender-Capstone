@@ -148,20 +148,20 @@ def show() -> None:
                 placeholder="Example: ./suricata_rules",
             )
             try:
-                normalized_rules_path = sanitize_path(rules_dir)
-                normalized_rules_path = os.path.abspath(os.path.normpath(normalized_rules_path))
+                sanitized = sanitize_path(rules_dir)
+                normalized_rules_path = os.path.abspath(os.path.normpath(sanitized))
             except ValueError as exc:
                 normalized_rules_path = None
                 st.error(f"Rules directory is invalid: {exc}")
             else:
-                if os.path.exists(normalized_rules_path):
+                if normalized_rules_path and os.path.exists(normalized_rules_path):
                     st.success(f"Rules directory found at {normalized_rules_path}.")
                     # Use os.path.join with normalized string and constant
                     rules_file_str = os.path.join(normalized_rules_path, "autodefender_custom.rules")
                     # Validate the final path to ensure it's still within safe directory
                     try:
-                        normalized_rules_file = sanitize_path(rules_file_str)
-                        normalized_rules_file = os.path.abspath(os.path.normpath(normalized_rules_file))
+                        sanitized_file = sanitize_path(rules_file_str)
+                        normalized_rules_file = os.path.abspath(os.path.normpath(sanitized_file))
                         # Additional check: ensure it's still within the rules directory
                         if not normalized_rules_file.startswith(normalized_rules_path + os.sep) and normalized_rules_file != normalized_rules_path:
                             raise ValueError("Rules file path is outside rules directory")
@@ -171,7 +171,8 @@ def show() -> None:
                         normalized_rules_file = None
                     
                     if normalized_rules_file and os.path.exists(normalized_rules_file):
-                        with open(normalized_rules_file, "r", encoding="utf-8") as handle:
+                        safe_file_path = os.path.abspath(os.path.normpath(normalized_rules_file))
+                        with open(safe_file_path, "r", encoding="utf-8") as handle:
                             content = handle.read()
                             st.info(
                                 f"{len([line for line in content.splitlines() if line.strip() and not line.strip().startswith('#')])} custom rule(s) found."

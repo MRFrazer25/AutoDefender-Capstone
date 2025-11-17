@@ -197,22 +197,27 @@ def show() -> None:
                 safe_name = sanitize_filename(export_filename) or sanitize_filename(
                     f"threats_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                 )
-                export_dir = Path("exports")
-                export_dir.mkdir(parents=True, exist_ok=True)
-                export_path_str = str(export_dir / f"{safe_name}.{export_format.lower()}")
+                filename = f"{safe_name}.{export_format.lower()}"
                 try:
-                    safe_export_path = sanitize_path(export_path_str)
-                    safe_export_path = os.path.abspath(os.path.normpath(safe_export_path))
                     if export_format == "CSV":
-                        success = exporter.export_threats_csv(threats, safe_export_path)
+                        success = exporter.export_threats_csv(threats, filename)
                     else:
-                        success = exporter.export_threats_json(threats, safe_export_path)
+                        success = exporter.export_threats_json(threats, filename)
 
                     if success:
+                        # Get the actual path from exporter for download
+                        from exporter import EXPORTS_DIR
+                        safe_export_path = os.path.join(EXPORTS_DIR, filename)
+                        # Validate path is within exports directory
+                        exports_dir_normalized = os.path.abspath(os.path.normpath(EXPORTS_DIR))
+                        safe_export_path_normalized = os.path.abspath(os.path.normpath(safe_export_path))
+                        if not safe_export_path_normalized.startswith(exports_dir_normalized + os.sep):
+                            st.error("Export path validation failed")
+                            return
                         st.success(
-                            f"Exported {len(threats)} threats to {os.path.basename(safe_export_path)}."
+                            f"Exported {len(threats)} threats to {filename}."
                         )
-                        with open(safe_export_path, "r", encoding="utf-8") as handle:
+                        with open(safe_export_path_normalized, "r", encoding="utf-8") as handle:
                             st.download_button(
                                 label=f"Download {export_format}",
                                 data=handle.read(),

@@ -58,10 +58,11 @@ def show() -> None:
                 
                 for raw_path in raw_paths:
                     try:
-                        normalized_path = sanitize_path(raw_path)
-                        normalized_path = os.path.abspath(os.path.normpath(normalized_path))
+                        sanitized = sanitize_path(raw_path)
+                        normalized_path = os.path.abspath(os.path.normpath(sanitized))
                         sanitized_paths.append(normalized_path)
-                        if not os.path.exists(normalized_path):
+                        safe_path = os.path.abspath(os.path.normpath(normalized_path))
+                        if not os.path.exists(safe_path):
                             missing_paths.append(normalized_path)
                     except ValueError:
                         missing_paths.append(raw_path)
