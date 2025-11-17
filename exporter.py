@@ -13,7 +13,7 @@ from typing import List
 
 from models import Threat, DetectionStats
 from database import Database
-from utils.path_utils import sanitize_path, get_safe_path_string
+from utils.path_utils import sanitize_path
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,7 @@ class Exporter:
         
         Returns validated path as normalized string.
         """
-        path = sanitize_path(output_path)
-        normalized_path = get_safe_path_string(path)
+        normalized_path = sanitize_path(output_path)
         # Use os.path operations for directory creation
         parent_dir = os.path.dirname(normalized_path)
         if parent_dir:

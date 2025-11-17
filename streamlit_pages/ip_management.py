@@ -31,7 +31,7 @@ def show() -> None:
     config = Config.get_default()
     try:
         db_path_value = st.session_state.get("db_path", config.db_path)
-        db_path = str(sanitize_path(db_path_value))
+        db_path = sanitize_path(db_path_value)
     except ValueError as exc:
         st.error(f"Invalid database path: {exc}")
         return

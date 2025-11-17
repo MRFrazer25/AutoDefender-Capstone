@@ -11,7 +11,7 @@ import streamlit as st
 
 from config import Config
 from database import Database
-from utils.path_utils import sanitize_path, get_safe_path_string
+from utils.path_utils import sanitize_path
 
 
 def show() -> None:
@@ -24,7 +24,7 @@ def show() -> None:
     config = Config.get_default()
     try:
         db_path_value = st.session_state.get("db_path", config.db_path)
-        db_path = str(sanitize_path(db_path_value))
+        db_path = sanitize_path(db_path_value)
     except ValueError as exc:
         st.error(f"Invalid database path: {exc}")
         return
@@ -40,7 +40,7 @@ def show() -> None:
             placeholder="Example: C:\\Program Files\\Suricata\\log\\eve.json",
         )
         try:
-            sanitized_log_path = str(sanitize_path(log_path))
+            sanitized_log_path = sanitize_path(log_path)
         except ValueError as exc:
             st.error(f"Invalid log path: {exc}")
             sanitized_log_path = log_path
@@ -58,8 +58,7 @@ def show() -> None:
                 
                 for raw_path in raw_paths:
                     try:
-                        sanitized = sanitize_path(raw_path)
-                        normalized_path = get_safe_path_string(sanitized)
+                        normalized_path = sanitize_path(raw_path)
                         sanitized_paths.append(normalized_path)
                         if not os.path.exists(normalized_path):
                             missing_paths.append(normalized_path)

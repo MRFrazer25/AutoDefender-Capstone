@@ -58,7 +58,7 @@ def show() -> None:
     config = Config.get_default()
     try:
         db_path_value = st.session_state.get("db_path", config.db_path)
-        db_path = str(sanitize_path(db_path_value))
+        db_path = sanitize_path(db_path_value)
     except ValueError as exc:
         st.error(f"Invalid database path: {exc}")
         return
@@ -67,12 +67,10 @@ def show() -> None:
     suricata_enabled = st.session_state.get("suricata_enabled", config.SURICATA_ENABLED)
     config.SURICATA_ENABLED = suricata_enabled
     try:
-        config.SURICATA_RULES_DIR = str(
-            sanitize_path(st.session_state.get("suricata_rules_dir", config.SURICATA_RULES_DIR))
-        )
+        config.SURICATA_RULES_DIR = sanitize_path(st.session_state.get("suricata_rules_dir", config.SURICATA_RULES_DIR))
     except ValueError:
         st.error("Invalid Suricata rules directory configured.")
-        config.SURICATA_RULES_DIR = str(sanitize_path(config.SURICATA_RULES_DIR))
+        config.SURICATA_RULES_DIR = sanitize_path(config.SURICATA_RULES_DIR)
     config.SURICATA_DRY_RUN = st.session_state.get(
         "suricata_dry_run", config.SURICATA_DRY_RUN
     )

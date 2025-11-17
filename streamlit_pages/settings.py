@@ -8,7 +8,7 @@ import streamlit as st
 from ai_explainer import AIExplainer
 from config import Config
 from database import Database
-from utils.path_utils import sanitize_path, sanitize_filename, get_safe_path_string
+from utils.path_utils import sanitize_path, sanitize_filename
 
 
 def show() -> None:
@@ -17,9 +17,9 @@ def show() -> None:
 
     config = Config.get_default()
     try:
-        db_path = str(sanitize_path(st.session_state.get("db_path", config.db_path)))
+        db_path = sanitize_path(st.session_state.get("db_path", config.db_path))
     except ValueError:
-        db_path = str(sanitize_path(config.db_path))
+        db_path = sanitize_path(config.db_path)
         st.session_state.db_path = db_path
 
     tabs = st.tabs([
@@ -71,7 +71,7 @@ def show() -> None:
 
         if st.button("Save general settings"):
             try:
-                sanitized_log = str(sanitize_path(log_path))
+                sanitized_log = sanitize_path(log_path)
             except ValueError as exc:
                 st.error(f"Invalid log path: {exc}")
             else:
@@ -148,22 +148,21 @@ def show() -> None:
                 placeholder="Example: ./suricata_rules",
             )
             try:
-                rules_path = sanitize_path(rules_dir)
+                normalized_rules_path = sanitize_path(rules_dir)
             except ValueError as exc:
-                rules_path = None
+                normalized_rules_path = None
                 st.error(f"Rules directory is invalid: {exc}")
             else:
-                normalized_rules_path = get_safe_path_string(rules_path)
                 if os.path.exists(normalized_rules_path):
-                    st.success(f"Rules directory found at {rules_path}.")
+                    st.success(f"Rules directory found at {normalized_rules_path}.")
                     # Use os.path.join with normalized string and constant
                     rules_file_str = os.path.join(normalized_rules_path, "autodefender_custom.rules")
-                    # Normalize using os.path operations
-                    normalized_rules_file = os.path.abspath(os.path.normpath(rules_file_str))
                     # Validate the final path to ensure it's still within safe directory
                     try:
-                        rules_file_validated = sanitize_path(normalized_rules_file, base_dir=rules_path)
-                        normalized_rules_file = get_safe_path_string(rules_file_validated)
+                        normalized_rules_file = sanitize_path(rules_file_str)
+                        # Additional check: ensure it's still within the rules directory
+                        if not normalized_rules_file.startswith(normalized_rules_path + os.sep) and normalized_rules_file != normalized_rules_path:
+                            raise ValueError("Rules file path is outside rules directory")
                     except ValueError:
                         # If validation fails, path is invalid
                         st.error("Invalid rules file path")
@@ -205,11 +204,9 @@ def show() -> None:
 
         if st.button("Save Suricata settings"):
             try:
-                sanitized_rules_dir = str(sanitize_path(rules_dir)) if rules_dir else str(
-                    sanitize_path(config.SURICATA_RULES_DIR)
-                )
+                sanitized_rules_dir = sanitize_path(rules_dir) if rules_dir else sanitize_path(config.SURICATA_RULES_DIR)
                 sanitized_config_path = (
-                    str(sanitize_path(suricata_config_path))
+                    sanitize_path(suricata_config_path)
                     if suricata_config_path
                     else ""
                 )

@@ -1,5 +1,6 @@
 """Threat analysis page with filtering and export."""
 
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -21,7 +22,7 @@ def show() -> None:
     config = Config.get_default()
     try:
         db_path_value = st.session_state.get("db_path", config.db_path)
-        db_path = str(sanitize_path(db_path_value))
+        db_path = sanitize_path(db_path_value)
     except ValueError as exc:
         st.error(f"Invalid database path: {exc}")
         return
@@ -198,22 +199,23 @@ def show() -> None:
                 )
                 export_dir = Path("exports")
                 export_dir.mkdir(parents=True, exist_ok=True)
-                export_path = (export_dir / f"{safe_name}.{export_format.lower()}").resolve()
+                export_path_str = str(export_dir / f"{safe_name}.{export_format.lower()}")
                 try:
+                    safe_export_path = sanitize_path(export_path_str)
                     if export_format == "CSV":
-                        success = exporter.export_threats_csv(threats, str(export_path))
+                        success = exporter.export_threats_csv(threats, safe_export_path)
                     else:
-                        success = exporter.export_threats_json(threats, str(export_path))
+                        success = exporter.export_threats_json(threats, safe_export_path)
 
                     if success:
                         st.success(
-                            f"Exported {len(threats)} threats to {export_path.name}."
+                            f"Exported {len(threats)} threats to {os.path.basename(safe_export_path)}."
                         )
-                        with export_path.open("r", encoding="utf-8") as handle:
+                        with open(safe_export_path, "r", encoding="utf-8") as handle:
                             st.download_button(
                                 label=f"Download {export_format}",
                                 data=handle.read(),
-                                file_name=export_path.name,
+                                file_name=os.path.basename(safe_export_path),
                                 mime=(
                                     "application/json"
                                     if export_format == "JSON"

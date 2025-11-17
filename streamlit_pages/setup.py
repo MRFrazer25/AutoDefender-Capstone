@@ -301,10 +301,10 @@ def show() -> None:
         try:
             # Handle multi-path log input BEFORE sanitization
             log_paths = [l.strip() for l in log_path.strip().split('\n') if l.strip()]
-            sanitized_paths = [str(sanitize_path(p)) for p in log_paths]
+            sanitized_paths = [sanitize_path(p) for p in log_paths]
             
-            sanitized_db_path = str(sanitize_path(db_path))
-            sanitized_rules_dir = str(sanitize_path(rules_dir))
+            sanitized_db_path = sanitize_path(db_path)
+            sanitized_rules_dir = sanitize_path(rules_dir)
         except ValueError as exc:
             st.error(f"Invalid path: {exc}")
             st.session_state.setup_complete = False
