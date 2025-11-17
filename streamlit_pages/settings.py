@@ -8,7 +8,7 @@ import streamlit as st
 from ai_explainer import AIExplainer
 from config import Config
 from database import Database
-from utils.path_utils import sanitize_path, sanitize_filename
+from utils.path_utils import sanitize_path, sanitize_filename, get_safe_path_string
 
 
 def show() -> None:
@@ -153,29 +153,22 @@ def show() -> None:
                 rules_path = None
                 st.error(f"Rules directory is invalid: {exc}")
             else:
-                # Convert validated Path to string and normalize with os.path to break taint flow
-                # os.path.abspath() and os.path.normpath() are recognized by CodeQL as sanitizers
-                rules_path_str = str(rules_path)
-                normalized_rules_path = os.path.abspath(os.path.normpath(rules_path_str))
-                # normalized_rules_path is sanitized via os.path operations, safe for file operations
+                normalized_rules_path = get_safe_path_string(rules_path)
                 if os.path.exists(normalized_rules_path):
                     st.success(f"Rules directory found at {rules_path}.")
                     # Use os.path.join with normalized string and constant
                     rules_file_str = os.path.join(normalized_rules_path, "autodefender_custom.rules")
-                    # Normalize the joined path using os.path operations
+                    # Normalize using os.path operations
                     normalized_rules_file = os.path.abspath(os.path.normpath(rules_file_str))
                     # Validate the final path to ensure it's still within safe directory
                     try:
                         rules_file_validated = sanitize_path(normalized_rules_file, base_dir=rules_path)
-                        normalized_rules_file = str(rules_file_validated)
-                        # Apply os.path normalization again to break any remaining taint
-                        normalized_rules_file = os.path.abspath(os.path.normpath(normalized_rules_file))
+                        normalized_rules_file = get_safe_path_string(rules_file_validated)
                     except ValueError:
                         # If validation fails, path is invalid
                         st.error("Invalid rules file path")
                         normalized_rules_file = None
                     
-                    # normalized_rules_file is sanitized via os.path operations, safe for file operations
                     if normalized_rules_file and os.path.exists(normalized_rules_file):
                         with open(normalized_rules_file, "r", encoding="utf-8") as handle:
                             content = handle.read()
@@ -188,7 +181,6 @@ def show() -> None:
                     st.warning("Rules directory does not exist yet.")
                     if st.button("Create rules directory"):
                         try:
-                            # normalized_rules_path is sanitized via os.path operations, safe for os.makedirs
                             os.makedirs(normalized_rules_path, exist_ok=True)
                             st.success("Directory created.")
                         except Exception as exc:

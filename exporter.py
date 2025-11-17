@@ -13,7 +13,7 @@ from typing import List
 
 from models import Threat, DetectionStats
 from database import Database
-from utils.path_utils import sanitize_path
+from utils.path_utils import sanitize_path, get_safe_path_string
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +28,10 @@ class Exporter:
     def _prepare_output_path(self, output_path: str) -> str:
         """Sanitize and ensure the output path is ready for writing.
         
-        Returns validated path as string to break CodeQL taint tracking.
+        Returns validated path as normalized string.
         """
         path = sanitize_path(output_path)
-        # Convert to string and use os.path normalization to break taint flow
-        # os.path.abspath() and os.path.normpath() are recognized by CodeQL as sanitizers
-        path_str = str(path)
-        normalized_path = os.path.abspath(os.path.normpath(path_str))
+        normalized_path = get_safe_path_string(path)
         # Use os.path operations for directory creation
         parent_dir = os.path.dirname(normalized_path)
         if parent_dir:

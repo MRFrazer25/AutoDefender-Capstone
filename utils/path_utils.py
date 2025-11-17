@@ -31,26 +31,26 @@ def sanitize_path(path_str: str, base_dir: Path | None = None) -> Path:
     
     # Use base directory or current working directory as safe base
     if base_dir is None:
-        # Use os.getcwd() which CodeQL recognizes as safe
         base_dir_str = os.getcwd()
         base_dir_path = Path(base_dir_str)
     else:
         # Convert base_dir to string first, then normalize using os.path operations
-        # os.path.abspath() and os.path.normpath() break taint flow
         if isinstance(base_dir, Path):
             base_dir_str = str(base_dir)
         else:
             base_dir_str = str(base_dir)
-        # Use os.path operations to normalize - CodeQL recognizes these as sanitizers
+        # Use os.path operations to normalize
         base_dir_str = os.path.abspath(os.path.normpath(base_dir_str))
         base_dir_path = Path(base_dir_str)
     
     # Validate base directory exists and is a directory using os.path
-    # base_dir_str is normalized via os.path operations, breaking taint flow
-    if not os.path.exists(base_dir_str):
-        raise ValueError(f"Base directory does not exist: {base_dir_str}")
-    if not os.path.isdir(base_dir_str):
-        raise ValueError(f"Base path is not a directory: {base_dir_str}")
+    base_dir_real = os.path.realpath(base_dir_str) if os.path.exists(base_dir_str) else os.path.abspath(os.path.normpath(base_dir_str))
+    if not os.path.exists(base_dir_real):
+        raise ValueError(f"Base directory does not exist: {base_dir_real}")
+    if not os.path.isdir(base_dir_real):
+        raise ValueError(f"Base path is not a directory: {base_dir_real}")
+    # Update base_dir_str to use the realpath version
+    base_dir_str = base_dir_real
     
     # Use the validated string path for base_dir
     base_dir = base_dir_path
@@ -103,7 +103,7 @@ def sanitize_path(path_str: str, base_dir: Path | None = None) -> Path:
     if ".." in path_obj.parts:
         raise ValueError("Path contains traversal sequences (..) which are not allowed.")
     
-    # Resolve to absolute path using os.path operations to break taint flow
+    # Resolve to absolute path using os.path operations
     # Convert to string first, then resolve, then convert back to Path
     path_str = str(path_obj)
     resolved_str = os.path.abspath(os.path.normpath(path_str))
@@ -118,6 +118,25 @@ def sanitize_path(path_str: str, base_dir: Path | None = None) -> Path:
         raise ValueError(f"Path traversal detected: resolved path {resolved} is outside base directory {base_dir}")
     
     return resolved
+
+
+def get_safe_path_string(path: Path) -> str:
+    """Convert validated Path to normalized string.
+    
+    Uses os.path.realpath() for existing paths or os.path.abspath/normpath
+    for new paths to ensure proper normalization.
+    
+    Args:
+        path: Validated Path object from sanitize_path()
+        
+    Returns:
+        Normalized absolute path string
+    """
+    path_str = str(path)
+    if os.path.exists(path_str):
+        return os.path.realpath(path_str)
+    else:
+        return os.path.abspath(os.path.normpath(path_str))
 
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")

@@ -209,7 +209,7 @@ def show() -> None:
                         st.success(
                             f"Exported {len(threats)} threats to {export_path.name}."
                         )
-                        with export_path.open("r", encoding="utf-8") as handle:  # codeql[py/uncontrolled-path-element]
+                        with export_path.open("r", encoding="utf-8") as handle:
                             st.download_button(
                                 label=f"Download {export_format}",
                                 data=handle.read(),
