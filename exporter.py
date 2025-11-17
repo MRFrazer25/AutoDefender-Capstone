@@ -44,7 +44,7 @@ class Exporter:
         try:
             path = self._prepare_output_path(output_path)
             with open(path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
+                writer = csv.writer(f, quoting=csv.QUOTE_ALL)
                 
                 # Write header
                 writer.writerow([
@@ -132,7 +132,7 @@ class Exporter:
             if format.lower() == 'csv':
                 path = self._prepare_output_path(output_path)
                 with open(path, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.writer(f)
+                    writer = csv.writer(f, quoting=csv.QUOTE_ALL)
                     writer.writerow(['Metric', 'Value'])
                     writer.writerow(['Total Threats', stats.total_threats])
                     writer.writerow(['Critical', stats.by_severity.get('CRITICAL', 0)])

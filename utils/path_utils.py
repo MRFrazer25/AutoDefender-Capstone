@@ -20,10 +20,21 @@ def sanitize_path(path_str: str) -> Path:
         raise ValueError("Path cannot be empty.")
     if "\x00" in cleaned:
         raise ValueError("Path contains invalid characters.")
+    
+    # Check for path traversal patterns before resolving
+    # This prevents attacks like ../../../etc/passwd
+    path_obj = Path(cleaned).expanduser()
+    # Check if any part of the path is ".." - this catches traversal attempts
+    if ".." in path_obj.parts:
+        raise ValueError("Path contains traversal sequences (..) which are not allowed.")
+    
+    # Resolve to absolute path to normalize and prevent path traversal
+    # resolve() will normalize .. sequences, but we've already validated above
+    resolved = path_obj.resolve(strict=False)
 
     # codeql[py/uncontrolled-path-element]: Path is validated and normalized here;
     # call sites may still enforce additional allow-lists if needed.
-    return Path(cleaned).expanduser().resolve(strict=False)
+    return resolved
 
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")

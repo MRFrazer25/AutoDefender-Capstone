@@ -47,3 +47,6 @@ desktop.ini
 
 # Suricata rules backups (timestamped backups)
 suricata_rules/*.rules.backup.*
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.cursor/rules/snyk_rules.mdc

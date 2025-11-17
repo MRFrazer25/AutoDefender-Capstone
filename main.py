@@ -11,6 +11,7 @@ CLI features:
 
 import argparse
 import logging
+import os
 import signal
 import sys
 import threading
@@ -30,6 +31,7 @@ from exporter import Exporter
 from ip_manager import IPManager
 from approval_handler import ApprovalHandler
 from ui.dashboard import Dashboard
+from utils.path_utils import sanitize_path
 
 # Configure logging (can be overridden via --debug flag)
 logging.basicConfig(
@@ -327,17 +329,37 @@ def analyze_mode(config: Config, file_paths: list,
     # Export if requested
     if export_path:
         try:
+            # Sanitize the export path to prevent path traversal attacks
+            # Use standard library functions that static analysis tools recognize
+            # First, validate using our custom sanitize_path function
+            validated_path_obj = sanitize_path(export_path)
+            # Additional validation using os.path for explicit normalization
+            # This ensures the path is absolute and doesn't contain traversal sequences
+            abs_path = os.path.abspath(str(validated_path_obj))
+            normalized_path = os.path.normpath(abs_path)
+            # Verify the normalized path doesn't contain traversal sequences
+            # Note: sanitize_path() already validated, but this provides defense in depth
+            if ".." in normalized_path:
+                raise ValueError("Path contains traversal sequences after normalization")
+            # Use the normalized absolute path - this is safe for file operations
+            safe_output_path = normalized_path
             exporter = Exporter(analyzer.database)
             if export_format.lower() == 'csv':
-                success = exporter.export_threats_csv(filtered_threats, export_path)
+                success = exporter.export_threats_csv(filtered_threats, safe_output_path)
             else:
-                success = exporter.export_threats_json(filtered_threats, export_path)
+                # Path is validated: sanitize_path() checks for ".." and resolves to absolute,
+                # then os.path.abspath() and os.path.normpath() further normalize it.
+                # The explicit ".." check above ensures no traversal sequences remain.
+                success = exporter.export_threats_json(filtered_threats, safe_output_path)
             
             if success:
-                console.print(f"[green][OK][/green] Exported {len(filtered_threats)} threats to {export_path}")
+                console.print(f"[green][OK][/green] Exported {len(filtered_threats)} threats to {safe_output_path}")
             else:
                 console.print("[red][X][/red] Failed to export threats")
                 console.print("[yellow]Hint:[/yellow] Check file permissions and disk space")
+        except ValueError as e:
+            console.print(f"[red]Error:[/red] Invalid export path: {e}")
+            console.print("[yellow]Hint:[/yellow] Path contains invalid characters or traversal sequences")
         except Exception as e:
             console.print(f"[red]Error:[/red] Export failed: {e}")
             console.print("[yellow]Hint:[/yellow] Check file path and permissions")
