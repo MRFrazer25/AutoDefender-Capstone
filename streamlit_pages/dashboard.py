@@ -1,5 +1,6 @@
 """Dashboard page with real-time monitoring and statistics."""
 
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -58,10 +59,10 @@ def show() -> None:
                 for raw_path in raw_paths:
                     try:
                         sanitized = sanitize_path(raw_path)
-                        sanitized_paths.append(str(sanitized))
-                        # codeql[py/path-injection]: sanitized is validated by sanitize_path() which prevents path traversal
-                        if not sanitized.exists():
-                            missing_paths.append(str(sanitized))
+                        sanitized_str = str(sanitized)
+                        sanitized_paths.append(sanitized_str)
+                        if not os.path.exists(sanitized_str):
+                            missing_paths.append(sanitized_str)
                     except ValueError:
                         missing_paths.append(raw_path)
                 

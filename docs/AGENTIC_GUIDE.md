@@ -202,18 +202,18 @@ When `AUTO_APPROVE_SURICATA` is disabled (default), threats that qualify for Sur
 
 **Example Prompt:**
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Agentic Action Requires Approval                            │
-├─────────────────────────────────────────────────────────────┤
-│ Action Type: SURICATA_DROP_RULE                            │
-│ Proposed Rule:                                              │
-│ drop tcp any any -> 192.168.1.100 22 (msg:"AutoDefender:   │
-│ Block SSH brute force from 10.0.0.50"; sid:1000001; rev:1;)│
-│                                                             │
-│ Threat: SSH Root Login Attempt from 10.0.0.50             │
-│                                                             │
-│ Requested at: 2025-11-14 10:30:15                         │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------------+
+| Agentic Action Requires Approval                                  |
++-------------------------------------------------------------------+
+| Action Type: SURICATA_DROP_RULE                                   |
+| Proposed Rule:                                                     |
+| drop tcp any any -> 192.168.1.100 22 (msg:"AutoDefender:          |
+| Block SSH brute force from 10.0.0.50"; sid:1000001; rev:1;)       |
+|                                                                    |
+| Threat: SSH Root Login Attempt from 10.0.0.50                     |
+|                                                                    |
+| Requested at: 2025-11-14 10:30:15                                 |
++-------------------------------------------------------------------+
 
 Approve this action? [y/N]:
 ```

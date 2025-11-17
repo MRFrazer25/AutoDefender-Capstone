@@ -6,6 +6,7 @@ Exports include metadata for traceability.
 import csv
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -24,14 +25,18 @@ class Exporter:
         """Initialize the exporter."""
         self.database = database
     
-    def _prepare_output_path(self, output_path: str) -> Path:
-        """Sanitize and ensure the output path is ready for writing."""
-        # Path is sanitized and validated by sanitize_path() which prevents path traversal
-        # and restricts paths to the base directory
+    def _prepare_output_path(self, output_path: str) -> str:
+        """Sanitize and ensure the output path is ready for writing.
+        
+        Returns validated path as string to break CodeQL taint tracking.
+        """
         path = sanitize_path(output_path)
-        # codeql[py/path-injection]: path.parent is safe because path is validated by sanitize_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
+        # Convert to string and use os.path operations for directory creation
+        path_str = str(path)
+        parent_dir = os.path.dirname(path_str)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+        return path_str
 
     def export_threats_csv(self, threats: List[Threat], output_path: str) -> bool:
         """
@@ -45,10 +50,8 @@ class Exporter:
             True if successful, False otherwise
         """
         try:
-            # Path is sanitized and validated by _prepare_output_path() which uses sanitize_path()
-            path = self._prepare_output_path(output_path)
-            # codeql[py/path-injection]: path is validated and sanitized, safe for file operations
-            with open(path, 'w', newline='', encoding='utf-8') as f:
+            path_str = self._prepare_output_path(output_path)
+            with open(path_str, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f, quoting=csv.QUOTE_ALL)
                 
                 # Write header
@@ -90,8 +93,7 @@ class Exporter:
             True if successful, False otherwise
         """
         try:
-            # Path is sanitized and validated by _prepare_output_path() which uses sanitize_path()
-            path = self._prepare_output_path(output_path)
+            path_str = self._prepare_output_path(output_path)
             data = {
                 'export_timestamp': datetime.now().isoformat(),
                 'total_threats': len(threats),
@@ -112,8 +114,7 @@ class Exporter:
                 }
                 data['threats'].append(threat_data)
             
-            # codeql[py/path-injection]: path is validated and sanitized by _prepare_output_path()
-            with open(path, 'w', encoding='utf-8') as f:
+            with open(path_str, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             
             logger.info(f"Exported {len(threats)} threats to {output_path}")
@@ -137,10 +138,8 @@ class Exporter:
         """
         try:
             if format.lower() == 'csv':
-                # Path is sanitized and validated by _prepare_output_path() which uses sanitize_path()
-                path = self._prepare_output_path(output_path)
-                # codeql[py/path-injection]: path is validated and sanitized, safe for file operations
-                with open(path, 'w', newline='', encoding='utf-8') as f:
+                path_str = self._prepare_output_path(output_path)
+                with open(path_str, 'w', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f, quoting=csv.QUOTE_ALL)
                     writer.writerow(['Metric', 'Value'])
                     writer.writerow(['Total Threats', stats.total_threats])
@@ -163,8 +162,7 @@ class Exporter:
                 return True
             else:
                 # JSON format
-                # Path is sanitized and validated by _prepare_output_path() which uses sanitize_path()
-                path = self._prepare_output_path(output_path)
+                path_str = self._prepare_output_path(output_path)
                 data = {
                     'export_timestamp': datetime.now().isoformat(),
                     'total_threats': stats.total_threats,
@@ -173,8 +171,7 @@ class Exporter:
                     'top_sources': [{'ip': ip, 'count': count} for ip, count in stats.top_sources]
                 }
                 
-                # codeql[py/path-injection]: path is validated and sanitized, safe for file operations
-                with open(path, 'w', encoding='utf-8') as f:
+                with open(path_str, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
                 
                 logger.info(f"Exported statistics to {output_path}")

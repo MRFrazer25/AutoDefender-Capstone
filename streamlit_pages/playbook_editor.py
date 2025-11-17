@@ -83,11 +83,11 @@ def show():
     
     # List existing playbooks
     for idx, pb in enumerate(playbooks):
-        if st.sidebar.button(f"📋 {pb['name']}", key=f"pb_{idx}"):
+        if st.sidebar.button(f"[Playbook] {pb['name']}", key=f"pb_{idx}"):
             st.session_state.selected_playbook_idx = idx
             st.session_state.creating_new = False
     
-    if st.sidebar.button("➕ Create New Playbook"):
+    if st.sidebar.button("+ Create New Playbook"):
         st.session_state.creating_new = True
         st.session_state.selected_playbook_idx = None
     
@@ -152,7 +152,7 @@ def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict
         with col2:
             st.text(step['description'])
         with col3:
-            if st.button("🗑️", key=f"del_step_{form_key}_{i}"):
+            if st.button("[X]", key=f"del_step_{form_key}_{i}"):
                 st.session_state[f'editing_steps_{form_key}'].pop(i)
                 st.rerun()
     
@@ -173,7 +173,7 @@ def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict
             help="What this step does. Example: Block SSH source IP in Suricata"
         )
     
-    if st.button("➕ Add Step", key=f"add_step_{form_key}"):
+    if st.button("+ Add Step", key=f"add_step_{form_key}"):
         if new_step_type and new_step_desc:
             st.session_state[f'editing_steps_{form_key}'].append({
                 'type': new_step_type,
@@ -215,10 +215,10 @@ def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict
         # Form submission buttons
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
-            save_btn = st.form_submit_button("💾 Save Playbook", type="primary")
+            save_btn = st.form_submit_button("[Save] Save Playbook", type="primary")
         with col2:
             if playbook is not None:
-                delete_btn = st.form_submit_button("🗑️ Delete", type="secondary")
+                delete_btn = st.form_submit_button("[Delete] Delete", type="secondary")
             else:
                 delete_btn = False
         

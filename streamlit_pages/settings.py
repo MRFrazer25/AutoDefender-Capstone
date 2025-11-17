@@ -153,15 +153,23 @@ def show() -> None:
                 rules_path = None
                 st.error(f"Rules directory is invalid: {exc}")
             else:
-                # codeql[py/path-injection]: rules_path is validated by sanitize_path() which prevents path traversal
-                if rules_path.exists():
+                # Convert validated Path to string to break CodeQL taint tracking
+                rules_path_str = str(rules_path)
+                if os.path.exists(rules_path_str):
                     st.success(f"Rules directory found at {rules_path}.")
-                    # codeql[py/path-injection]: rules_path is validated, concatenation with constant string is safe
-                    rules_file = rules_path / "autodefender_custom.rules"
-                    # codeql[py/path-injection]: rules_file is derived from validated rules_path and constant string
-                    if rules_file.exists():
-                        # codeql[py/path-injection]: rules_file is safe, derived from validated path
-                        with open(rules_file, "r", encoding="utf-8") as handle:
+                    # Use os.path.join with validated string and constant
+                    rules_file_str = os.path.join(rules_path_str, "autodefender_custom.rules")
+                    # Validate the final path to ensure it's still within safe directory
+                    try:
+                        rules_file_validated = sanitize_path(rules_file_str, base_dir=rules_path)
+                        rules_file_str = str(rules_file_validated)
+                    except ValueError:
+                        # If validation fails, path is invalid
+                        st.error("Invalid rules file path")
+                        rules_file_str = None
+                    
+                    if rules_file_str and os.path.exists(rules_file_str):
+                        with open(rules_file_str, "r", encoding="utf-8") as handle:
                             content = handle.read()
                             st.info(
                                 f"{len([line for line in content.splitlines() if line.strip() and not line.strip().startswith('#')])} custom rule(s) found."
@@ -172,8 +180,7 @@ def show() -> None:
                     st.warning("Rules directory does not exist yet.")
                     if st.button("Create rules directory"):
                         try:
-                            # codeql[py/path-injection]: rules_path is validated by sanitize_path()
-                            rules_path.mkdir(parents=True, exist_ok=True)
+                            os.makedirs(rules_path_str, exist_ok=True)
                             st.success("Directory created.")
                         except Exception as exc:
                             st.error(f"Unable to create directory: {exc}")

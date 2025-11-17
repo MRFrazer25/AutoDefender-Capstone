@@ -254,9 +254,9 @@ Demo features:
 ### Demo Configuration
 
 The project ships with a built-in demo dataset that works on both localhost and Streamlit Cloud:
-- `demo/example_suricata_log.json` – sample Suricata log file
-- `demo/demo_config.db` – pre-populated demo SQLite database (included in repository)
-- `demo/log_replayer.py` – optional tool to replay demo events
+- `demo/example_suricata_log.json` - sample Suricata log file
+- `demo/demo_config.db` - pre-populated demo SQLite database (included in repository)
+- `demo/log_replayer.py` - optional tool to replay demo events
 
 **Note:** The demo database (`demo/demo_config.db`) is included in the repository and contains example/test IP addresses only (no personal information). It's ready to use immediately.
 
@@ -298,13 +298,13 @@ This command regenerates `demo/demo_config.db` with fresh sample data for testin
 ### Slack / Teams Webhook Example (Optional)
 
 1. Create an **Incoming Webhook**:
-   - **Slack**: open your workspace settings → **Integrations → Incoming Webhook** → add new webhook and copy the URL (`https://hooks.slack.com/services/...`).
+   - **Slack**: open your workspace settings -> **Integrations -> Incoming Webhook** -> add new webhook and copy the URL (`https://hooks.slack.com/services/...`).
    - **Microsoft Teams**:
-     1. In the Teams channel where you want alerts, click the **⋯** menu next to the channel name.
-     2. Choose **Connectors** → search for **Incoming Webhook** → click **Configure**.
-     3. Give the webhook a friendly name (e.g., “AutoDefender Alerts”) and optionally upload an icon.
+     1. In the Teams channel where you want alerts, click the **...** menu next to the channel name.
+     2. Choose **Connectors** -> search for **Incoming Webhook** -> click **Configure**.
+     3. Give the webhook a friendly name (e.g., "AutoDefender Alerts") and optionally upload an icon.
      4. Click **Create**, then copy the URL (`https://<region>.webhook.office.com/webhookb2/...`).
-2. Paste the webhook URL into the “Notification webhook URL” field on the Streamlit **Setup** page and click **Save configuration**.
+2. Paste the webhook URL into the "Notification webhook URL" field on the Streamlit **Setup** page and click **Save configuration**.
 3. Open **Action Management**. When you approve a playbook step that says `WEBHOOK_NOTIFY`, AutoDefender sends a simple JSON payload (same format for Slack and Teams) with threat details such as severity, source IP, and description. Example payload:
    ```json
    {
@@ -326,7 +326,7 @@ This command regenerates `demo/demo_config.db` with fresh sample data for testin
 
 - **Playbook Actions**: AutoDefender bundles common responses (drop rule + log + webhook) into a single approval prompt. Approve once and all steps execute in order, keeping humans in the loop but reducing clicks.
 - **Playbook Editor**: Customize response workflows from the Streamlit UI. Define conditions (severity, keywords) and action sequences without editing JSON files manually.
-- **Webhook Notifications**: When you approve a playbook step with `WEBHOOK_NOTIFY`, the console sends a JSON payload to your configured webhook (e.g., Slack/Teams). Leave the webhook URL blank if you prefer to stay offline—no data leaves your machine by default.
+- **Webhook Notifications**: When you approve a playbook step with `WEBHOOK_NOTIFY`, the console sends a JSON payload to your configured webhook (e.g., Slack/Teams). Leave the webhook URL blank if you prefer to stay offline - no data leaves your machine by default.
 - **GeoIP Context**: Public IPs are automatically enriched with location, ISP, and network data. This context appears in AI explanations and webhook notifications.
 - **Multi-Source Monitoring**: Monitor multiple Suricata instances, archived logs, or distributed sensors by entering multiple file paths (one per line) in the Setup page.
 
@@ -360,10 +360,10 @@ export WEBHOOK_URL=https://your-webhook-url
 ### Quick Reference (Non-Technical)
 
 - **Try online**: [https://autodefenderhackathon.streamlit.app/](https://autodefenderhackathon.streamlit.app/) - Demo database is pre-loaded and ready to use
-- **Start Suricata**: open PowerShell → `cd "C:\Program Files\Suricata"` → `.\suricata.exe -c suricata.yaml -i "Wi-Fi"`
-- **Run AutoDefender UI**: in the project folder → `python -m streamlit run streamlit_app.py`
+- **Start Suricata**: open PowerShell -> `cd "C:\Program Files\Suricata"` -> `.\suricata.exe -c suricata.yaml -i "Wi-Fi"`
+- **Run AutoDefender UI**: in the project folder -> `python -m streamlit run streamlit_app.py`
 - **Run CLI monitor**: `python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model phi4-mini`
-- **Load demo data**: Setup page → "Load demo configuration" → Save (works on both localhost and Streamlit Cloud)
+- **Load demo data**: Setup page -> "Load demo configuration" -> Save (works on both localhost and Streamlit Cloud)
 - **Replay demo log** (optional): `python demo/log_replayer.py demo/example_suricata_log.json --interval 0.5 --loop`
 - **Refresh demo database** (optional): `python tools/populate_demo_db.py` - Note: demo database is pre-populated in the repository
 - **Enable Slack/Teams alerts**: paste your webhook URL into the Setup page, then approve a `WEBHOOK_NOTIFY` action in Action Management.
@@ -470,36 +470,36 @@ Suricata integration works on Windows using file-based rule management:
 
 ```
 AutoDefender_Hackathon/
-├── main.py                 # CLI entry point
-├── config.py               # Configuration management
-├── analyzer.py             # Historical analysis
-├── monitor.py              # Real-time monitoring
-├── parser.py               # Suricata JSON log parsing
-├── detector.py             # Threat detection engine
-├── ai_explainer.py         # AI integration (Ollama)
-├── action_engine.py        # Action recommendations
-├── suricata_manager.py     # Suricata rule file management
-├── approval_handler.py     # Permission prompt system
-├── database.py             # SQLite database operations
-├── filter.py               # Threat filtering and search
-├── exporter.py             # Export functionality (CSV/JSON)
-├── ip_manager.py           # IP whitelist/blacklist management
-├── ui/                     # Terminal dashboard components
-│   └── dashboard.py        # CLI dashboard with threat/stats panels
-├── streamlit_app.py        # Streamlit entry point
-├── streamlit_pages/        # Streamlit page implementations
-├── demo/
-│   ├── demo.py             # Interactive demo script
-│   ├── demo_config.db      # Pre-populated demo database (included in repository)
-│   ├── example_suricata_log.json
-│   ├── log_replayer.py     # Utility to replay events into eve.json
-│   ├── generated/          # Temporary files created during demo
-│   └── outputs/            # Demo export artifacts
-├── docs/                   # Additional guides and references
-│   ├── SURICATA_SETUP.md   # Suricata installation and configuration
-│   └── AGENTIC_GUIDE.md    # AI-driven agentic automation guide
-├── requirements.txt        # Python dependencies
-└── README.md               # This file
+|-- main.py                 # CLI entry point
+|-- config.py               # Configuration management
+|-- analyzer.py             # Historical analysis
+|-- monitor.py              # Real-time monitoring
+|-- parser.py               # Suricata JSON log parsing
+|-- detector.py             # Threat detection engine
+|-- ai_explainer.py         # AI integration (Ollama)
+|-- action_engine.py        # Action recommendations
+|-- suricata_manager.py     # Suricata rule file management
+|-- approval_handler.py     # Permission prompt system
+|-- database.py             # SQLite database operations
+|-- filter.py               # Threat filtering and search
+|-- exporter.py             # Export functionality (CSV/JSON)
+|-- ip_manager.py           # IP whitelist/blacklist management
+|-- ui/                     # Terminal dashboard components
+|   |-- dashboard.py        # CLI dashboard with threat/stats panels
+|-- streamlit_app.py        # Streamlit entry point
+|-- streamlit_pages/        # Streamlit page implementations
+|-- demo/
+|   |-- demo.py             # Interactive demo script
+|   |-- demo_config.db      # Pre-populated demo database (included in repository)
+|   |-- example_suricata_log.json
+|   |-- log_replayer.py     # Utility to replay events into eve.json
+|   |-- generated/          # Temporary files created during demo
+|   |-- outputs/            # Demo export artifacts
+|-- docs/                   # Additional guides and references
+|   |-- SURICATA_SETUP.md   # Suricata installation and configuration
+|   |-- AGENTIC_GUIDE.md    # AI-driven agentic automation guide
+|-- requirements.txt        # Python dependencies
+|-- README.md               # This file
 ```
 
 ## Security & Privacy
