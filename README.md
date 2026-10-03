@@ -2,7 +2,7 @@
 
 An AI-powered security tool that monitors Suricata network logs in real-time and analyzes historical log files to detect threats, provide AI-generated explanations, and recommend security actions.
 
-**Try it online**: [https://autodefenderhackathon.streamlit.app/](https://autodefenderhackathon.streamlit.app/)
+**Try it online**: [https://autodefender.streamlit.app/](https://autodefender.streamlit.app/)
 
 ## About This Project
 
@@ -145,7 +145,7 @@ Start the web interface:
 python -m streamlit run streamlit_app.py
 ```
 
-**Hosted Streamlit App**: [https://autodefenderhackathon.streamlit.app/](https://autodefenderhackathon.streamlit.app/)
+**Hosted Streamlit App**: [https://autodefender.streamlit.app/](https://autodefender.streamlit.app/)
 
 The UI will open at `http://localhost:8501` and provides:
 - Real-time dashboard with live threat monitoring
@@ -395,7 +395,7 @@ export WEBHOOK_URL=https://your-webhook-url   # must be https://
 
 ### Quick Reference (Non-Technical)
 
-- **Try online**: [https://autodefenderhackathon.streamlit.app/](https://autodefenderhackathon.streamlit.app/) - Demo database is pre-loaded and ready to use
+- **Try online**: [https://autodefender.streamlit.app/](https://autodefender.streamlit.app/) - Demo database is pre-loaded and ready to use
 - **Start Suricata**: open PowerShell -> `cd "C:\Program Files\Suricata"` -> `.\suricata.exe -c suricata.yaml -i "Wi-Fi"`
 - **Run AutoDefender UI**: in the project folder -> set `AUTODEFENDER_UI_PASSWORD` -> `python -m streamlit run streamlit_app.py`
 - **Run CLI monitor**: `python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model <model>`
