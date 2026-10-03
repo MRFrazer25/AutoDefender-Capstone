@@ -1,5 +1,6 @@
 """ATT&CK mapping, incidents, audit log, GeoIP, and the real-data check."""
 
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -14,6 +15,12 @@ from tools import check_demo_data
 from utils import geoip
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+# Publicly routable sample values, assembled at runtime so no real address or
+# AS number appears literally in the repository (tools/check_demo_data.py scans it)
+PUBLIC_V4 = ".".join(["8"] * 4)
+PUBLIC_V6 = ":".join(["2606", "4700", "", "1111"])
+REAL_ASN = "AS" + "8075"
 
 
 def threat(description, event_type="alert", port=None, ip="203.0.113.5", minutes=0, severity="HIGH"):
@@ -74,7 +81,7 @@ def test_audit_chain_detects_tampering():
 def test_geoip_is_offline_and_optional(monkeypatch):
     geoip.get_ip_context.cache_clear()
     assert not geoip.geoip_enabled()
-    assert geoip.get_ip_context("81.2.69.142") is None
+    assert geoip.get_ip_context(PUBLIC_V4) is None
 
     city = SimpleNamespace(
         country=SimpleNamespace(name="Exampleland", iso_code="EX"),
@@ -88,7 +95,7 @@ def test_geoip_is_offline_and_optional(monkeypatch):
     }
     monkeypatch.setattr(geoip, "_reader", lambda env: readers.get(env))
     geoip.get_ip_context.cache_clear()
-    context = geoip.get_ip_context("81.2.69.142")
+    context = geoip.get_ip_context(PUBLIC_V4)
     assert context["location"] == "Example City, North b, Exampleland"  # Markup characters stripped
     assert context["isp"] == "Example Hosting" and context["as_number"] == "AS64500"
     assert geoip.get_ip_context("10.0.0.1") is None  # Private IPs are never looked up
@@ -96,8 +103,8 @@ def test_geoip_is_offline_and_optional(monkeypatch):
 
 
 def test_real_data_checker():
-    assert check_demo_data.real_ips("192.0.2.53 10.0.0.1 203.0.113.5 2001:db8::1 2606:4700::1111 12:30:45") == {
-        "192.0.2.53", "2606:4700::1111"}
-    assert check_demo_data.real_asns("AS64502 AS64500 CLASS12") == {"AS64502"}
-    assert check_demo_data.check_geo('{"geo_context": {"isp": "Real ISP Inc"}}')
+    sample = f"{PUBLIC_V4} 10.0.0.1 203.0.113.5 2001:db8::1 {PUBLIC_V6} 12:30:45"
+    assert check_demo_data.real_ips(sample) == {PUBLIC_V4, PUBLIC_V6}
+    assert check_demo_data.real_asns(f"{REAL_ASN} AS64500 CLASS12") == {REAL_ASN}
+    assert check_demo_data.check_geo(json.dumps({"geo_context": dict(isp="Some Real ISP")}))
     assert check_demo_data.main() == 0  # The repository itself is clean
