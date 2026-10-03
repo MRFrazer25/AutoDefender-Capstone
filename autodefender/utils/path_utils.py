@@ -29,15 +29,6 @@ def allowed_base_dirs(include_log_dirs: bool = False) -> list[str]:
     return [os.path.realpath(os.path.expanduser(d.strip())) for d in dirs]
 
 
-def _is_within(path: str, base: str) -> bool:
-    path_c, base_c = os.path.normcase(path), os.path.normcase(base)
-    try:
-        return os.path.commonpath([path_c, base_c]) == base_c
-    except ValueError:
-        # Different drives on Windows
-        return False
-
-
 def sanitize_path(path_str: str, include_log_dirs: bool = False) -> str:
     """Normalize a user-supplied path and make sure it stays inside an allowed folder.
 
@@ -65,8 +56,12 @@ def sanitize_path(path_str: str, include_log_dirs: bool = False) -> str:
         raise ValueError("Path contains invalid characters.")
 
     resolved = os.path.realpath(os.path.expanduser(cleaned))
-    if any(_is_within(resolved, base) for base in allowed_base_dirs(include_log_dirs)):
-        return resolved
+    for base in allowed_base_dirs(include_log_dirs):
+        if resolved == base:
+            return base
+        # Trailing separator so /data doesn't also allow /data-other
+        if resolved.startswith(os.path.join(base, "")):
+            return resolved
 
     raise ValueError(
         f"Path {cleaned} is outside the allowed folders. "

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """AutoDefender Streamlit Web UI."""
 
+import functools
 import hashlib
 import hmac
 import importlib
@@ -63,6 +64,7 @@ DEV_MODE_ENV = "AUTODEFENDER_DEV"
 MIN_PASSWORD_LENGTH = 12
 MAX_ATTEMPTS = 5
 LOCKOUT_SECONDS = 300
+PBKDF2_ITERATIONS = 200_000
 LOCAL_ADDRESSES = {"localhost", "127.0.0.1", "::1"}
 # Sign the session out after this long without any interaction
 IDLE_TIMEOUT_SECONDS = 30 * 60
@@ -107,9 +109,20 @@ def _fingerprint_key() -> bytes:
     return secrets.token_bytes(32)
 
 
+def _password_digest(password: str) -> bytes:
+    """Salted PBKDF2 digest of a password, keyed to this server process."""
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), _fingerprint_key(), PBKDF2_ITERATIONS)
+
+
+@functools.lru_cache(maxsize=4)
+def _configured_password_digest(password: str) -> bytes:
+    """Digest of the configured password; cached since every rerun needs it."""
+    return _password_digest(password)
+
+
 def _password_fingerprint(password: str) -> str:
-    """Keyed hash of the configured password, used to end sessions when it changes."""
-    return hmac.new(_fingerprint_key(), password.encode(), hashlib.sha256).hexdigest()
+    """Fingerprint of the configured password, used to end sessions when it changes."""
+    return _configured_password_digest(password).hex()
 
 
 def _lockout_remaining(failure_times: list, now: float) -> float:
@@ -250,8 +263,8 @@ def require_password() -> bool:
                 audit.record("console", "sign_in_blocked", {"seconds_left": int(remaining) + 1})
             else:
                 # Compare fixed-length digests in constant time
-                supplied = hashlib.sha256(password_input.encode()).digest()
-                expected = hashlib.sha256(password_required.encode()).digest()
+                supplied = _password_digest(password_input)
+                expected = _configured_password_digest(password_required)
                 if hmac.compare_digest(supplied, expected):
                     guard["failures"].clear()
                     st.session_state.authenticated = True
