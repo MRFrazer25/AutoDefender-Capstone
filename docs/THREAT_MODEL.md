@@ -45,7 +45,7 @@ On Linux/macOS the databases and CLI exports are created readable by the current
 | Alert floods exhausting the machine | Bounded AI worker pool, a per-minute AI call budget, repeat-alert cooldowns, capped per-IP tracking |
 | Two people approving the same action at once | Actions are claimed atomically in the database before anything is written |
 | Real people or companies named in demo data | `tools/check_demo_data.py` fails on real IPs, AS numbers, or organization names (runs in CI) |
-| Vulnerable or fake dependencies | Only well-known packages; pip-audit and Dependabot; GitHub Actions pinned to commit SHAs |
+| Vulnerable or fake dependencies | Only well-known packages; pip-audit in CI plus GitHub's Dependabot alerts (a repo setting); GitHub Actions pinned to commit SHAs |
 
 ## Out of scope
 

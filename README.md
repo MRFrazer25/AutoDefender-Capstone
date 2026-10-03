@@ -455,7 +455,7 @@ AutoDefender-Capstone/
 |-- tests/                      # pytest suite (run: python -m pytest)
 |-- tools/                      # check_demo_data.py (real-data check), populate_demo_db.py
 |-- .streamlit/                 # Streamlit security config and secrets example
-|-- .github/                    # CI checks and Dependabot updates
+|-- .github/                    # CI checks (tests, real-data check, bandit, pip-audit)
 |-- .devcontainer/              # VS Code / Codespaces dev container
 |-- Dockerfile, docker-compose.yml, .env.example
 |-- requirements.txt, requirements-dev.txt
@@ -481,7 +481,7 @@ AutoDefender-Capstone/
 - **Webhook Targets**: Webhook URLs must be https and point at a public host (no localhost or private addresses)
 - **CORS/XSRF Protection**: Streamlit's CORS and XSRF protections stay on (see `.streamlit/config.toml`)
 - **No Data Collection**: No telemetry or usage data is collected
-- **No Real-World Data in the Repo**: Demo data and docs only use private and documentation IP ranges, documentation AS numbers, and fictional organization names. `python tools/check_demo_data.py` enforces this, and the GitHub Actions workflow runs it (plus the test suite, bandit, and pip-audit) on every push. Dependabot opens weekly update PRs for dependencies, actions, and the Docker base image
+- **No Real-World Data in the Repo**: Demo data and docs only use private and documentation IP ranges, documentation AS numbers, and fictional organization names. `python tools/check_demo_data.py` enforces this, and the GitHub Actions workflow runs it (plus the test suite, bandit, and pip-audit) on every push.
 
 See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for what AutoDefender stores, what it talks to, and the risks each control covers.
 
