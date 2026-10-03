@@ -184,7 +184,7 @@ To test port scan detection, scan a device on your own network that you own (for
 
 You should see threats being detected in real time in the AutoDefender terminal.
 
-Prefer the web console? Set `AUTODEFENDER_UI_PASSWORD`, run `python -m streamlit run streamlit_app.py`, enter the same `eve.json` path on the Setup page, and click **Start monitoring** on the Dashboard.
+Prefer the web console? Optionally set `AUTODEFENDER_UI_PASSWORD` to require sign-in, run `python -m streamlit run streamlit_app.py`, enter the same `eve.json` path on the Setup page, and click **Start monitoring** on the Dashboard.
 
 ---
 

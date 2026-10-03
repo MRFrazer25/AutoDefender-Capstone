@@ -41,12 +41,12 @@ AutoDefender started as my senior year college capstone project in fall 2025. I 
 The quickest way to try everything (AutoDefender, a local Ollama, and a replayer that feeds the sample Suricata log):
 
 ```bash
-cp .env.example .env        # then set AUTODEFENDER_UI_PASSWORD in .env
+cp .env.example .env        # optional: set AUTODEFENDER_UI_PASSWORD in .env to require sign-in
 docker compose up -d --build
 docker compose exec ollama ollama pull <model>   # optional; then set OLLAMA_MODEL=<model> in .env
 ```
 
-Open http://localhost:8501, sign in, and start monitoring `/var/log/suricata/eve.json` on the Dashboard. Data (database, audit log, rules) is kept in the `autodefender-data` volume. The console is published on `127.0.0.1` only and Ollama is not exposed at all.
+Open http://localhost:8501 (sign in if you set a password) and start monitoring `/var/log/suricata/eve.json` on the Dashboard. Data (database, audit log, rules) is kept in the `autodefender-data` volume. The console is published on `127.0.0.1` only and Ollama is not exposed at all.
 
 To watch a real Suricata on a Linux host, remove the `replayer` service and mount the host's log folder read-only on the `autodefender` service: `- /var/log/suricata:/var/log/suricata:ro`. (Docker Desktop on Windows/macOS can't capture host network traffic, so run Suricata itself outside Docker there.)
 
@@ -85,7 +85,6 @@ The demo database (`demo/demo_config.db`) is pre-populated and included in the r
    - [Suricata IDS](https://docs.suricata.io/en/latest/install.html) (follow the installer for your platform or use `docs/SURICATA_SETUP.md`)
    - [Ollama](https://ollama.ai/download) for local AI models
    - Optional: Slack/MS Teams (or any webhook endpoint) if you want automated notifications (Microsoft Teams incoming webhooks work the same way as Slack)
-   - Optional: Slack/MS Teams (or any webhook endpoint) if you want automated notifications
 
 2. **Prepare Suricata**
    - Enable the `eve.json` output in `suricata.yaml` (already enabled by default)
@@ -109,7 +108,7 @@ The demo database (`demo/demo_config.db`) is pre-populated and included in the r
 
 5. **Choose how you want to run AutoDefender**
    - **Streamlit UI (recommended for most people)**:  
-     Set a console password (12+ characters) first, then start the UI:  
+     Optionally set a console password (12+ characters) to require sign-in, then start the UI:  
      PowerShell: `$env:AUTODEFENDER_UI_PASSWORD = "choose-a-long-password"`  
      macOS/Linux: `export AUTODEFENDER_UI_PASSWORD="choose-a-long-password"`  
      `python -m streamlit run streamlit_app.py`
@@ -374,7 +373,7 @@ export OLLAMA_MODEL=your-model-name
 # Set Ollama endpoint
 export OLLAMA_ENDPOINT=http://localhost:11434
 
-# Web console password (required, 12+ characters)
+# Optional web console password (12+ characters); set it to require sign-in
 export AUTODEFENDER_UI_PASSWORD=choose-a-long-password
 
 # Optional: offline GeoIP with local MaxMind GeoLite2 databases
@@ -398,7 +397,7 @@ export WEBHOOK_URL=https://your-webhook-url   # must be https://
 
 - **Try online**: [https://autodefender.streamlit.app/](https://autodefender.streamlit.app/) - Demo database is pre-loaded and ready to use
 - **Start Suricata**: open PowerShell -> `cd "C:\Program Files\Suricata"` -> `.\suricata.exe -c suricata.yaml -i "Wi-Fi"`
-- **Run AutoDefender UI**: in the project folder -> set `AUTODEFENDER_UI_PASSWORD` -> `python -m streamlit run streamlit_app.py`
+- **Run AutoDefender UI**: in the project folder -> optionally set `AUTODEFENDER_UI_PASSWORD` (to require sign-in) -> `python -m streamlit run streamlit_app.py`
 - **Run CLI monitor**: `python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model <model>`
 - **Load demo data**: Setup page -> "Load demo configuration" (works on both localhost and Streamlit Cloud)
 - **Replay demo log** (optional): `python demo/log_replayer.py demo/example_suricata_log.json --interval 0.5 --loop`
