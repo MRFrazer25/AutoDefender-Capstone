@@ -3,13 +3,13 @@
 import threading
 from datetime import datetime, timezone
 
-from approval_handler import ApprovalHandler
-from config import Config
-from database import Database
-from models import Action, Threat
-from monitor import RealTimeMonitor
-from notifications.webhook import is_valid_webhook_url
-from parser import minimal_event
+from autodefender.approval_handler import ApprovalHandler
+from autodefender.config import Config
+from autodefender.database import Database
+from autodefender.models import Action, Threat
+from autodefender.monitor import RealTimeMonitor
+from autodefender.notifications.webhook import is_valid_webhook_url
+from autodefender.parser import minimal_event
 
 
 def action_status(db, action_id):
@@ -74,7 +74,7 @@ def test_cli_prompt_failure_leaves_action_pending(tmp_path, monkeypatch):
     def no_terminal(*args, **kwargs):
         raise EOFError("no stdin")
 
-    monkeypatch.setattr("approval_handler.Confirm.ask", no_terminal)
+    monkeypatch.setattr("autodefender.approval_handler.Confirm.ask", no_terminal)
     assert handler.prompt_approval(action) is False
     assert monitor.peek_pending_suricata_action() is None  # The CLI loop can move on
     assert action_status(monitor.database, action.id) == "RECOMMENDED"  # Nothing decided
@@ -82,7 +82,7 @@ def test_cli_prompt_failure_leaves_action_pending(tmp_path, monkeypatch):
 
 
 def test_ai_backlog_is_bounded(tmp_path, monkeypatch):
-    monkeypatch.setattr("monitor.MAX_AI_BACKLOG", 3)
+    monkeypatch.setattr("autodefender.monitor.MAX_AI_BACKLOG", 3)
     monitor = _monitor(tmp_path)
     gate = threading.Event()
     accepted = [monitor._submit_ai_task(gate.wait, 5) for _ in range(6)]
@@ -92,7 +92,7 @@ def test_ai_backlog_is_bounded(tmp_path, monkeypatch):
 
 
 def test_threats_still_get_explanations_when_backlog_is_full(tmp_path, monkeypatch):
-    monkeypatch.setattr("monitor.MAX_AI_BACKLOG", 0)
+    monkeypatch.setattr("autodefender.monitor.MAX_AI_BACKLOG", 0)
     monitor = _monitor(tmp_path)
     monitor.running = True
     threat = Threat(timestamp=datetime.now(timezone.utc), source_ip="203.0.113.5", dest_ip="10.0.0.5",

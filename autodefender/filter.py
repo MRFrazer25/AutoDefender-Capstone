@@ -6,8 +6,8 @@ Case-insensitive filtering with partial matching support.
 import logging
 from datetime import datetime
 from typing import List, Optional
-from models import Threat
-from parser import to_utc
+from autodefender.models import Threat
+from autodefender.parser import to_utc
 
 logger = logging.getLogger(__name__)
 

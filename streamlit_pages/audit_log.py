@@ -3,9 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-import audit
-
-
+from autodefender import audit
 def show() -> None:
     """Render the audit log."""
     st.markdown('<div class="main-header">Audit Log</div>', unsafe_allow_html=True)

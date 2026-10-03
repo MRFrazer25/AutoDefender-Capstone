@@ -12,9 +12,9 @@ import os
 from datetime import datetime, timezone
 from typing import List
 
-from mitre import technique_labels, techniques_for
-from models import Threat
-from utils.path_utils import sanitize_filename
+from autodefender.mitre import technique_labels, techniques_for
+from autodefender.models import Threat
+from autodefender.utils.path_utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 

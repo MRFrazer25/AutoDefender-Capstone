@@ -15,9 +15,9 @@ suppressed for a cooldown period to avoid alert floods.
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
-from models import Threat
-from config import Config
-from parser import minimal_event, to_utc
+from autodefender.config import Config
+from autodefender.models import Threat
+from autodefender.parser import minimal_event, to_utc
 
 logger = logging.getLogger(__name__)
 

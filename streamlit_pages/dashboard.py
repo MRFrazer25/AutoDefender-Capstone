@@ -9,7 +9,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from database import Database
+from autodefender.database import Database
 from streamlit_pages.session_config import (
     record,
     config_from_session,
@@ -17,9 +17,9 @@ from streamlit_pages.session_config import (
     start_monitoring,
     stop_monitoring,
 )
-from mitre import techniques_for
-from utils.display import md_escape
-from utils.path_utils import sanitize_path
+from autodefender.mitre import techniques_for
+from autodefender.utils.display import md_escape
+from autodefender.utils.path_utils import sanitize_path
 
 logger = logging.getLogger(__name__)
 

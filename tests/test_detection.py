@@ -3,10 +3,10 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from config import Config
-from detector import ThreatDetector
-from ip_manager import IPManager
-from parser import SuricataParser
+from autodefender.config import Config
+from autodefender.detector import ThreatDetector
+from autodefender.ip_manager import IPManager
+from autodefender.parser import SuricataParser
 
 T0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
 parser = SuricataParser()

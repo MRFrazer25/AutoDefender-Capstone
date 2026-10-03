@@ -23,15 +23,15 @@ from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 
-from config import Config
-from monitor import RealTimeMonitor
-from analyzer import HistoricalAnalyzer
-from database import Database
-from filter import ThreatFilter
-from exporter import write_export
-from ip_manager import IPManager, normalize_ip
-from approval_handler import ApprovalHandler
-from ui.dashboard import Dashboard
+from autodefender.analyzer import HistoricalAnalyzer
+from autodefender.approval_handler import ApprovalHandler
+from autodefender.config import Config
+from autodefender.database import Database
+from autodefender.exporter import write_export
+from autodefender.filter import ThreatFilter
+from autodefender.ip_manager import IPManager, normalize_ip
+from autodefender.monitor import RealTimeMonitor
+from autodefender.ui.dashboard import Dashboard
 
 # Configure logging (can be overridden via --debug flag)
 logging.basicConfig(
@@ -331,7 +331,7 @@ def analyze_mode(config: Config, file_paths: list,
     if export_path:
         try:
             # Extract just the filename from the path
-            from utils.path_utils import sanitize_filename
+            from autodefender.utils.path_utils import sanitize_filename
             filename = os.path.basename(export_path) or f"threats_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{export_format.lower()}"
             if not filename.endswith(('.csv', '.json')):
                 filename = f"{sanitize_filename(filename)}.{export_format.lower()}"

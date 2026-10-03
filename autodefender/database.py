@@ -10,9 +10,9 @@ import json
 import logging
 import threading
 from datetime import datetime, timedelta, timezone
-from parser import to_utc
+from autodefender.parser import to_utc
 from typing import List, Optional
-from models import Threat, Action, DetectionStats
+from autodefender.models import Threat, Action, DetectionStats
 
 logger = logging.getLogger(__name__)
 

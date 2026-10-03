@@ -18,11 +18,11 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR.parent) not in sys.path:
     sys.path.insert(0, str(BASE_DIR.parent))
 
-from analyzer import HistoricalAnalyzer  # noqa: E402
-from config import Config  # noqa: E402
-from exporter import threats_to_csv, threats_to_json  # noqa: E402
-from filter import ThreatFilter  # noqa: E402
-from ip_manager import IPManager  # noqa: E402
+from autodefender.analyzer import HistoricalAnalyzer  # noqa: E402
+from autodefender.config import Config  # noqa: E402
+from autodefender.exporter import threats_to_csv, threats_to_json  # noqa: E402
+from autodefender.filter import ThreatFilter  # noqa: E402
+from autodefender.ip_manager import IPManager  # noqa: E402
 
 OUTPUT_DIR = BASE_DIR / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)

@@ -6,12 +6,12 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from database import Database
-from exporter import threats_to_csv, threats_to_json
-from filter import ThreatFilter
-from mitre import technique_labels
+from autodefender.database import Database
+from autodefender.exporter import threats_to_csv, threats_to_json
+from autodefender.filter import ThreatFilter
+from autodefender.mitre import technique_labels
+from autodefender.utils.path_utils import sanitize_filename
 from streamlit_pages.session_config import config_from_session, record
-from utils.path_utils import sanitize_filename
 
 
 def show() -> None:

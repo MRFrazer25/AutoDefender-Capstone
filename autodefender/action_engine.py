@@ -8,10 +8,10 @@ opt-in AUTO_APPROVE_SURICATA setting, handled by the monitor).
 import logging
 from datetime import datetime
 from typing import List, Optional
-from models import Threat, Action
-from config import Config
-from playbooks.manager import PlaybookManager
-from suricata_manager import normalize_block_ip
+from autodefender.config import Config
+from autodefender.models import Threat, Action
+from autodefender.playbooks import PlaybookManager
+from autodefender.suricata_manager import normalize_block_ip
 
 logger = logging.getLogger(__name__)
 

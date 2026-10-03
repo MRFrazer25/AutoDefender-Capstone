@@ -9,8 +9,8 @@ import streamlit as st
 from pathlib import Path
 from typing import Dict, List, Any
 
+from autodefender.utils.display import md_escape
 from streamlit_pages.session_config import record
-from utils.display import md_escape
 
 logger = logging.getLogger(__name__)
 

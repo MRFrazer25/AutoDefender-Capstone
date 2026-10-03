@@ -124,7 +124,7 @@ socket = /var/run/suricata/suricata-command.socket
 
 1. `config.ini` passed with `--config` (highest priority)
 2. Environment variables
-3. Defaults in `config.py` (lowest priority)
+3. Defaults in `autodefender/config.py` (lowest priority)
 
 In the web console, the Setup and Settings pages override these for your browser session.
 
@@ -221,18 +221,18 @@ Set a block duration in **Settings -> Suricata integration** (0 = permanent, the
 
 1. **Detection**: the detector raises a HIGH or CRITICAL threat
 2. **Rule proposal**: the AI (or the built-in rule) proposes a drop rule for the source IP
-3. **Validation**: `parse_drop_rule()` and `build_drop_rule()` in `suricata_manager.py` accept only the exact single-IP format
+3. **Validation**: `parse_drop_rule()` and `build_drop_rule()` in `autodefender/suricata_manager.py` accept only the exact single-IP format
 4. **Approval**: CLI prompt, web console button, or auto-approval if enabled
 5. **Write**: `SuricataManager.add_custom_rule()` backs up the file, skips IPs that are already blocked, assigns the SID, appends the rule, and records the block (and its expiry) in `autodefender_blocks.json`
 6. **Reload**: Suricata picks up the change after a reload or restart; the CLI dashboard and web console say when one is needed
 
 ### Main components
 
-- **`suricata_manager.py`**: rule validation, writing, backups, active blocks, unblock, expiry, and `suricatasc` reload
-- **`ai_explainer.py`**: AI explanations and rule suggestions, with untrusted-data fencing and a per-minute call budget
-- **`monitor.py`**: real-time processing with a bounded AI worker pool and the CLI approval queue
-- **`approval_handler.py`**: CLI approval prompts and batch approval
-- **`audit.py`**: the hash-chained audit log
+- **`autodefender/suricata_manager.py`**: rule validation, writing, backups, active blocks, unblock, expiry, and `suricatasc` reload
+- **`autodefender/ai_explainer.py`**: AI explanations and rule suggestions, with untrusted-data fencing and a per-minute call budget
+- **`autodefender/monitor.py`**: real-time processing with a bounded AI worker pool and the CLI approval queue
+- **`autodefender/approval_handler.py`**: CLI approval prompts and batch approval
+- **`autodefender/audit.py`**: the hash-chained audit log
 
 ### Rule File Structure
 

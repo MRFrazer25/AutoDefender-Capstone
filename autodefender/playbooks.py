@@ -8,9 +8,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from models import Action, Threat
+from autodefender.models import Action, Threat
 
-from utils.path_utils import sanitize_path
+from autodefender.utils.path_utils import sanitize_path
 
 logger = logging.getLogger(__name__)
 

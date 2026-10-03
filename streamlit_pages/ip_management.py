@@ -3,8 +3,8 @@
 import pandas as pd
 import streamlit as st
 
-from database import Database
-from ip_manager import IPManager, normalize_ip
+from autodefender.database import Database
+from autodefender.ip_manager import IPManager, normalize_ip
 from streamlit_pages.session_config import config_from_session, record
 
 

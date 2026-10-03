@@ -4,11 +4,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from ai_explainer import AIExplainer
-from config import Config
-from ip_manager import IPManager
-from models import Threat
-from suricata_manager import SuricataManager, build_drop_rule, parse_drop_rule
+from autodefender.ai_explainer import AIExplainer
+from autodefender.config import Config
+from autodefender.ip_manager import IPManager
+from autodefender.models import Threat
+from autodefender.suricata_manager import SuricataManager, build_drop_rule, parse_drop_rule
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 

@@ -7,12 +7,12 @@ from types import SimpleNamespace
 
 import pytest
 
-import audit
-from incidents import group_incidents
-from mitre import techniques_for
-from models import Threat
+from autodefender import audit
+from autodefender.incidents import group_incidents
+from autodefender.mitre import techniques_for
+from autodefender.models import Threat
+from autodefender.utils import geoip
 from tools import check_demo_data
-from utils import geoip
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 

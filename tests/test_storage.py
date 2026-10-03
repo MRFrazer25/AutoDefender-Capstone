@@ -7,12 +7,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from database import Database
-from exporter import threats_to_csv, threats_to_json, write_export
-from filter import ThreatFilter
-from models import Action, Threat
-from utils.display import md_escape
-from utils.path_utils import sanitize_path
+from autodefender.database import Database
+from autodefender.exporter import threats_to_csv, threats_to_json, write_export
+from autodefender.filter import ThreatFilter
+from autodefender.models import Action, Threat
+from autodefender.utils.display import md_escape
+from autodefender.utils.path_utils import sanitize_path
 
 T0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
 

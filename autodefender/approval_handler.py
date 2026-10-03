@@ -5,7 +5,7 @@ Handles user approval workflows, especially for Suricata rule generation.
 
 import logging
 from typing import Optional, Callable
-from models import Action
+from autodefender.models import Action
 from rich.console import Console
 from rich.markup import escape
 from rich.prompt import Confirm

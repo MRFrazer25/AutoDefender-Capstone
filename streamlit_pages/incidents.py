@@ -6,11 +6,11 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from database import Database
-from incidents import group_incidents
-from mitre import technique_labels
+from autodefender.database import Database
+from autodefender.incidents import group_incidents
+from autodefender.mitre import technique_labels
+from autodefender.utils.display import md_escape
 from streamlit_pages.session_config import config_from_session
-from utils.display import md_escape
 
 SEVERITY_COLORS = {"CRITICAL": "#d92e2e", "HIGH": "#ff8c3a", "MEDIUM": "#ffd84d", "LOW": "#3a8c3f"}
 

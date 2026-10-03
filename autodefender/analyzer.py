@@ -3,14 +3,14 @@
 import logging
 from pathlib import Path
 from typing import List, Optional
-from parser import SuricataParser
-from detector import ThreatDetector
-from database import Database
-from action_engine import ActionEngine
-from ai_explainer import AIExplainer
-from filter import ThreatFilter
-from models import Threat
-from config import Config
+from autodefender.action_engine import ActionEngine
+from autodefender.ai_explainer import AIExplainer
+from autodefender.config import Config
+from autodefender.database import Database
+from autodefender.detector import ThreatDetector
+from autodefender.filter import ThreatFilter
+from autodefender.models import Threat
+from autodefender.parser import SuricataParser
 
 logger = logging.getLogger(__name__)
 

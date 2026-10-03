@@ -10,10 +10,10 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
-from database import Database  # noqa: E402
-from models import Threat, Action  # noqa: E402
-from ai_explainer import AIExplainer  # noqa: E402
-from config import Config  # noqa: E402
+from autodefender.ai_explainer import AIExplainer  # noqa: E402
+from autodefender.config import Config  # noqa: E402
+from autodefender.database import Database  # noqa: E402
+from autodefender.models import Threat, Action  # noqa: E402
 from tools.check_demo_data import check_geo, real_asns, real_ips  # noqa: E402
 
 

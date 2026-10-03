@@ -4,9 +4,9 @@ import json
 import time
 from datetime import datetime, timedelta, timezone
 
-from config import Config
-from database import Database
-from monitor import RealTimeMonitor
+from autodefender.config import Config
+from autodefender.database import Database
+from autodefender.monitor import RealTimeMonitor
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 

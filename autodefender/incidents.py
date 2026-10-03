@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List
 
-from mitre import techniques_for
-from models import Threat
-from parser import to_utc
+from autodefender.mitre import techniques_for
+from autodefender.models import Threat
+from autodefender.parser import to_utc
 
 SEVERITY_RANK = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 

@@ -13,16 +13,16 @@ from typing import Callable, Optional
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 import time
-from parser import SuricataParser
-from detector import ThreatDetector
-from database import Database
-from action_engine import ActionEngine
-from ai_explainer import AIExplainer
-from models import Threat, Action
-import audit
-from config import Config
-from suricata_manager import SuricataManager
-from utils.geoip import enrich_threat_context
+from autodefender import audit
+from autodefender.action_engine import ActionEngine
+from autodefender.ai_explainer import AIExplainer
+from autodefender.config import Config
+from autodefender.database import Database
+from autodefender.detector import ThreatDetector
+from autodefender.models import Threat, Action
+from autodefender.parser import SuricataParser
+from autodefender.suricata_manager import SuricataManager
+from autodefender.utils.geoip import enrich_threat_context
 
 logger = logging.getLogger(__name__)
 

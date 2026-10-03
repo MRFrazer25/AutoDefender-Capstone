@@ -365,7 +365,7 @@ Sign-ins (including failures and lockouts), approvals, rejections, unblocks, IP 
 
 ## Configuration
 
-Edit `config.py` or create a `config.ini` file to customize:
+Set environment variables or create a `config.ini` file (see `autodefender/config.py`) to customize:
 - Suricata log file paths
 - Ollama endpoint (default: `http://localhost:11434`)
 - Database path
@@ -432,47 +432,42 @@ See [docs/AGENTIC_GUIDE.md](docs/AGENTIC_GUIDE.md) for the approval workflow, co
 
 ```
 AutoDefender-Capstone/
-|-- main.py                 # CLI entry point
-|-- config.py               # Configuration management
-|-- analyzer.py             # Historical analysis
-|-- monitor.py              # Real-time monitoring
-|-- parser.py               # Suricata JSON log parsing
-|-- detector.py             # Threat detection engine
-|-- ai_explainer.py         # AI integration (Ollama)
-|-- action_engine.py        # Action recommendations
-|-- suricata_manager.py     # Suricata rule file management
-|-- approval_handler.py     # Permission prompt system
-|-- database.py             # SQLite database operations
-|-- filter.py               # Threat filtering and search
-|-- exporter.py             # Export functionality (CSV/JSON)
-|-- ip_manager.py           # IP whitelist/blacklist management
-|-- mitre.py                # MITRE ATT&CK technique mapping
-|-- incidents.py            # Groups threats into incidents
-|-- audit.py                # Local hash-chained audit log
-|-- ui/                     # Terminal dashboard components
-|   |-- dashboard.py        # CLI dashboard with threat/stats panels
-|-- streamlit_app.py        # Streamlit entry point
-|-- streamlit_pages/        # Streamlit page implementations
-|-- demo/
-|   |-- demo.py             # Interactive demo script
-|   |-- demo_config.db      # Pre-populated demo database (included in repository)
-|   |-- example_suricata_log.json
-|   |-- log_replayer.py     # Utility to replay events into eve.json
-|   |-- generated/          # Temporary files created during demo
-|   |-- outputs/            # Demo export artifacts
-|-- docs/                   # Additional guides and references
-|   |-- SURICATA_SETUP.md   # Suricata installation and configuration
-|   |-- AGENTIC_GUIDE.md    # AI-driven agentic automation guide
-|   |-- THREAT_MODEL.md     # What is stored, who can act, risks and controls
-|-- tests/                  # pytest suite (run: python -m pytest)
-|-- tools/
-|   |-- check_demo_data.py  # Fails if real IPs/organizations appear in the repo
-|   |-- populate_demo_db.py # Regenerates the demo database
-|-- Dockerfile, docker-compose.yml
-|-- .github/                # CI checks and Dependabot updates
-|-- requirements.txt        # Python dependencies
-|-- requirements-dev.txt    # Test and scanning tools
-|-- README.md               # This file
+|-- main.py                     # CLI entry point
+|-- streamlit_app.py            # Web console entry point (sign-in and navigation)
+|-- streamlit_pages/            # Web console pages (Dashboard, Incidents, Settings, ...)
+|-- autodefender/               # Core package
+|   |-- config.py               # Configuration (env vars, config.ini)
+|   |-- models.py               # Threat, Action, and stats data classes
+|   |-- parser.py               # Suricata eve.json parsing
+|   |-- detector.py             # Threat detection engine
+|   |-- monitor.py              # Real-time log monitoring
+|   |-- analyzer.py             # Historical analysis
+|   |-- action_engine.py        # Action recommendations
+|   |-- playbooks.py            # Playbook matching (steps come from playbooks/playbooks.json)
+|   |-- ai_explainer.py         # AI explanations and rule suggestions (Ollama)
+|   |-- suricata_manager.py     # Drop rule validation, writing, blocks, expiry, reload
+|   |-- approval_handler.py     # CLI approval prompts
+|   |-- database.py             # SQLite storage
+|   |-- filter.py               # Threat filtering and search
+|   |-- exporter.py             # CSV/JSON export
+|   |-- ip_manager.py           # IP whitelist/blacklist
+|   |-- mitre.py                # MITRE ATT&CK technique mapping
+|   |-- incidents.py            # Groups threats into incidents
+|   |-- audit.py                # Local hash-chained audit log
+|   |-- notifications/          # Webhook notifications
+|   |-- ui/                     # Terminal dashboard (Rich)
+|   |-- utils/                  # Path checks, display escaping, offline GeoIP
+|-- playbooks/playbooks.json    # Response playbooks (edited in the Playbook Editor)
+|-- suricata_rules/             # Rules file AutoDefender writes (include it in suricata.yaml)
+|-- demo/                       # Sample log, demo database, demo script, log replayer
+|-- docs/                       # Suricata setup, agentic guide, threat model
+|-- tests/                      # pytest suite (run: python -m pytest)
+|-- tools/                      # check_demo_data.py (real-data check), populate_demo_db.py
+|-- .streamlit/                 # Streamlit security config and secrets example
+|-- .github/                    # CI checks and Dependabot updates
+|-- .devcontainer/              # VS Code / Codespaces dev container
+|-- Dockerfile, docker-compose.yml, .env.example
+|-- requirements.txt, requirements-dev.txt
 ```
 
 ## Security & Privacy

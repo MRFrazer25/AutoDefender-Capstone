@@ -7,18 +7,18 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
-from action_engine import MANUAL_ACTIONS
-from database import Database
-from ip_manager import IPManager
-from notifications.webhook import send_webhook
+from autodefender.action_engine import MANUAL_ACTIONS
+from autodefender.database import Database
+from autodefender.ip_manager import IPManager
+from autodefender.notifications.webhook import send_webhook
 from streamlit_pages.session_config import (
     config_from_session,
     record,
     webhook_url_from_session,
 )
-from suricata_manager import SuricataManager, build_drop_rule, normalize_block_ip, parse_drop_rule
-from mitre import techniques_for
-from utils.display import md_escape
+from autodefender.mitre import techniques_for
+from autodefender.suricata_manager import SuricataManager, build_drop_rule, normalize_block_ip, parse_drop_rule
+from autodefender.utils.display import md_escape
 
 logger = logging.getLogger(__name__)
 

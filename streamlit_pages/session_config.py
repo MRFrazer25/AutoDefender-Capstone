@@ -8,10 +8,10 @@ from typing import Optional
 
 import streamlit as st
 
-import audit
-from config import Config
-from ip_manager import IPManager
-from utils.path_utils import sanitize_path
+from autodefender import audit
+from autodefender.config import Config
+from autodefender.ip_manager import IPManager
+from autodefender.utils.path_utils import sanitize_path
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def _monitor_registry() -> dict:
 def start_monitoring(log_paths: list[str], config: Config, read_from_start: bool = False) -> None:
     """Start one background monitor per log file, replacing any running ones."""
     # Imported here so pages that never monitor don't load watchdog/Ollama
-    from monitor import RealTimeMonitor
+    from autodefender.monitor import RealTimeMonitor
 
     registry = _monitor_registry()
     with registry["lock"]:

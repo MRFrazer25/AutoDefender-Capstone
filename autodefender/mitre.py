@@ -8,7 +8,7 @@ tag rather than a guess. Technique IDs follow ATT&CK Enterprise.
 import re
 from typing import Dict, List
 
-from models import Threat
+from autodefender.models import Threat
 
 ATTACK_URL = "https://attack.mitre.org/techniques/{}/"
 

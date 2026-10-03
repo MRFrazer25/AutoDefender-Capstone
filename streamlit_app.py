@@ -13,9 +13,7 @@ from datetime import datetime, timezone
 
 import streamlit as st
 
-import audit
-
-
+from autodefender import audit
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

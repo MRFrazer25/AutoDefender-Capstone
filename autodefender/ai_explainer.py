@@ -16,10 +16,10 @@ from typing import Optional
 import httpx
 import ollama
 
-from mitre import technique_labels
-from models import Threat
-from config import Config
-from suricata_manager import build_drop_rule, normalize_block_ip, parse_drop_rule
+from autodefender.config import Config
+from autodefender.mitre import technique_labels
+from autodefender.models import Threat
+from autodefender.suricata_manager import build_drop_rule, normalize_block_ip, parse_drop_rule
 
 logger = logging.getLogger(__name__)
 

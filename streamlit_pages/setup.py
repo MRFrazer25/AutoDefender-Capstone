@@ -9,10 +9,10 @@ from urllib.parse import urlparse
 
 import streamlit as st
 
-from config import Config
-from notifications.webhook import is_valid_webhook_url
+from autodefender.config import Config
+from autodefender.notifications.webhook import is_valid_webhook_url
+from autodefender.utils.path_utils import sanitize_path
 from streamlit_pages.session_config import record
-from utils.path_utils import sanitize_path
 
 logger = logging.getLogger(__name__)
 

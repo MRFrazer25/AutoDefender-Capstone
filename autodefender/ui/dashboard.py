@@ -12,8 +12,8 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from models import Threat, Action, DetectionStats
-from database import Database
+from autodefender.database import Database
+from autodefender.models import Threat, Action, DetectionStats
 
 logger = logging.getLogger(__name__)
 

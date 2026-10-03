@@ -20,7 +20,7 @@ import threading
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple
-from config import Config
+from autodefender.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -157,8 +157,8 @@ class SuricataManager:
             True if safe, False otherwise
         """
         try:
-            # Get absolute paths
-            app_dir = Path(__file__).parent.resolve()
+            # Project root (this file lives in autodefender/)
+            app_dir = Path(__file__).resolve().parents[1]
             path_resolved = path.resolve()
             
             # Check if path is within app directory or specified rules directory

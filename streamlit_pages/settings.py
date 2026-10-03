@@ -5,13 +5,13 @@ from pathlib import Path
 
 import streamlit as st
 
-from ai_explainer import AIExplainer
-from config import Config
-from database import Database
+from autodefender.ai_explainer import AIExplainer
+from autodefender.config import Config
+from autodefender.database import Database
+from autodefender.utils.geoip import geoip_enabled
+from autodefender.utils.path_utils import sanitize_path
 from streamlit_pages.session_config import config_from_session, record
 from streamlit_pages.setup import is_valid_model_name, is_valid_service_url
-from utils.geoip import geoip_enabled
-from utils.path_utils import sanitize_path
 
 logger = logging.getLogger(__name__)
 

@@ -9,9 +9,9 @@ import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
-import audit
-
+from autodefender import audit
 APP_TIMEOUT = 60
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def app_env(in_repo, tmp_path, monkeypatch):
 
 
 def new_app(state=None):
-    at = AppTest.from_file(str(Path(audit.__file__).with_name("streamlit_app.py")), default_timeout=APP_TIMEOUT)
+    at = AppTest.from_file(str(ROOT / "streamlit_app.py"), default_timeout=APP_TIMEOUT)
     for key, value in (state or {}).items():
         at.session_state[key] = value
     return at
