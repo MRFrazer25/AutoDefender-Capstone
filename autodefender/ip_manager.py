@@ -32,19 +32,27 @@ class IPManager:
         self.config_path = Path(config_path)
         self.whitelist: Set[str] = set()
         self.blacklist: Set[str] = set()
-        self._lists_mtime: Optional[float] = None
+        self._lists_stamp: Optional[tuple[int, int]] = None
         self._load_lists()
 
-    def _file_mtime(self) -> Optional[float]:
+    def _file_stamp(self) -> Optional[tuple[int, int]]:
+        """Modification time in nanoseconds plus file size.
+
+        Time alone misses a rewrite that lands in the same timestamp tick.
+        Size catches an add or remove even when the timestamp does not move.
+        """
         try:
-            return self.config_path.stat().st_mtime if self.config_path.exists() else None
+            if not self.config_path.exists():
+                return None
+            st = self.config_path.stat()
+            return (st.st_mtime_ns, st.st_size)
         except OSError:
             return None
 
     def _reload_if_stale(self):
         """Reload lists when another process or page has rewritten the file."""
-        mtime = self._file_mtime()
-        if mtime != self._lists_mtime:
+        stamp = self._file_stamp()
+        if stamp != self._lists_stamp:
             self._load_lists()
 
     def _load_lists(self):
@@ -63,7 +71,7 @@ class IPManager:
         else:
             # Create empty file
             self._save_lists()
-        self._lists_mtime = self._file_mtime()
+        self._lists_stamp = self._file_stamp()
 
     @staticmethod
     def _clean_list(values) -> Set[str]:
@@ -87,7 +95,7 @@ class IPManager:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
             logger.debug(f"Saved IP lists to {self.config_path}")
-            self._lists_mtime = self._file_mtime()
+            self._lists_stamp = self._file_stamp()
         except IOError as e:
             logger.error(f"Error saving IP lists: {e}")
 
