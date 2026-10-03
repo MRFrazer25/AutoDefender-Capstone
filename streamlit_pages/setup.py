@@ -1,6 +1,7 @@
 """Setup page for initial configuration."""
 
 import logging
+import re
 import shutil
 import uuid
 from pathlib import Path
@@ -36,6 +37,14 @@ def _save_upload(uploaded_file, allowed_suffixes: set) -> Path:
     with open(saved_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
     return saved_path.resolve()
+
+
+MODEL_NAME_PATTERN = re.compile(r"[A-Za-z0-9._:/-]{1,100}")
+
+
+def is_valid_model_name(name: str) -> bool:
+    """Ollama model names look like 'phi4-mini' or 'library/llama3:8b'."""
+    return bool(MODEL_NAME_PATTERN.fullmatch(name or ""))
 
 
 def is_valid_service_url(url: str) -> bool:
@@ -227,7 +236,9 @@ def show() -> None:
             "Notification webhook URL (optional)",
             value=st.session_state.get("webhook_url", config.WEBHOOK_URL),
             placeholder="Example: https://hooks.slack.com/services/...",
-            help="If provided, approved actions can trigger this webhook (Slack, Teams, etc.)",
+            help="If provided, approved actions can trigger this webhook (Slack, Teams, etc.). "
+                 "Webhook URLs work like passwords, so the field is masked.",
+            type="password",
         )
 
         st.subheader("Suricata integration")
@@ -248,7 +259,7 @@ def show() -> None:
         submitted = st.form_submit_button("Save configuration")
 
     if submitted:
-        # Get current values from session state (updated by inputs or file browser)
+        # Get current values from session state (updated by inputs or uploads)
         log_path = st.session_state.get("log_path", default_log_path)
         db_path = st.session_state.get("db_path", default_db_path)
         
@@ -262,10 +273,12 @@ def show() -> None:
             errors.append("Ollama endpoint is required.")
         if not ollama_model.strip():
             errors.append("Ollama model name is required.")
+        if ollama_model.strip() and not is_valid_model_name(ollama_model.strip()):
+            errors.append("Ollama model name can only contain letters, digits, '.', '_', ':', '/' and '-'.")
         if ollama_endpoint.strip() and not is_valid_service_url(ollama_endpoint.strip()):
             errors.append("Ollama endpoint must be an http:// or https:// URL.")
         if webhook_url.strip() and not is_valid_webhook_url(webhook_url.strip()):
-            errors.append("Webhook URL must be an https:// URL.")
+            errors.append("Webhook URL must be an https:// URL on a public host (for example hooks.slack.com).")
 
         if errors:
             for error in errors:
@@ -338,7 +351,7 @@ def show() -> None:
                 st.warning(
                     "None of the specified log files exist yet. "
                     "Make sure Suricata is configured to write to these paths, "
-                    "or use the file browser to upload files for analysis."
+                    "or upload a log file above to analyze it."
                 )
             else:
                 st.warning(

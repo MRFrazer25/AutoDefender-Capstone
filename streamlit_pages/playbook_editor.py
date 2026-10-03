@@ -1,6 +1,7 @@
 """Playbook Editor Page - Create and modify response playbooks."""
 
 import json
+import logging
 import os
 import re
 
@@ -10,6 +11,8 @@ from typing import Dict, List, Any
 
 from streamlit_pages.session_config import record
 from utils.display import md_escape
+
+logger = logging.getLogger(__name__)
 
 PLAYBOOK_FILE = Path("playbooks/playbooks.json")
 
@@ -33,8 +36,9 @@ def load_playbooks() -> List[Dict[str, Any]]:
         with open(PLAYBOOK_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
         return data if isinstance(data, list) else []
-    except Exception as e:
-        st.error(f"Error loading playbooks: {e}")
+    except Exception:
+        logger.exception("Error loading playbooks")
+        st.error("Could not load playbooks. Check the server log for details.")
         return []
 
 
@@ -48,8 +52,9 @@ def save_playbooks(playbooks: List[Dict[str, Any]]) -> bool:
             json.dump(playbooks, f, indent=2)
         os.replace(temp_file, PLAYBOOK_FILE)
         return True
-    except Exception as e:
-        st.error(f"Error saving playbooks: {e}")
+    except Exception:
+        logger.exception("Error saving playbooks")
+        st.error("Could not save playbooks. Check the server log for details.")
         return False
 
 

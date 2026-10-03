@@ -1,8 +1,11 @@
 """Action management page for approving or rejecting security actions."""
 
+import logging
+from datetime import datetime
+from typing import Optional
+
 import pandas as pd
 import streamlit as st
-from datetime import datetime
 
 from action_engine import MANUAL_ACTIONS
 from database import Database
@@ -16,6 +19,10 @@ from streamlit_pages.session_config import (
 from suricata_manager import SuricataManager, build_drop_rule, normalize_block_ip, parse_drop_rule
 from mitre import techniques_for
 from utils.display import md_escape
+
+logger = logging.getLogger(__name__)
+
+ALREADY_HANDLED = "This action was already handled (maybe in another tab). Refreshing."
 
 
 def _rule_for_action(action, threat):
@@ -31,14 +38,25 @@ def _rule_for_action(action, threat):
     return None
 
 
-def _apply_drop_rule(manager, action, threat, db) -> bool:
-    """Write the action's drop rule and record the result."""
+def _apply_drop_rule(manager, action, threat, db) -> Optional[bool]:
+    """Write the action's drop rule and record the result.
+
+    Returns True/False for success/failure, or None if the action was no
+    longer pending (already handled elsewhere).
+    """
+    if not db.transition_action(action.id, "RECOMMENDED", "PROCESSING"):
+        return None
     rule = _rule_for_action(action, threat)
-    if rule and manager.add_custom_rule(rule):
+    try:
+        applied = bool(rule) and manager.add_custom_rule(rule)
+    except Exception:
+        logger.exception("Error applying drop rule for action %s", action.id)
+        applied = False
+    if applied:
         db.update_action_status(action.id, "EXECUTED", datetime.now())
-        return True
-    db.update_action_status(action.id, "FAILED")
-    return False
+    else:
+        db.update_action_status(action.id, "FAILED")
+    return applied
 
 
 def _execute_additional_action(action, threat, db):
@@ -46,6 +64,8 @@ def _execute_additional_action(action, threat, db):
     now = datetime.now()
     success = False
     message = ""
+    if not db.transition_action(action.id, "RECOMMENDED", "PROCESSING"):
+        return None, ALREADY_HANDLED
 
     if action.action_type == "WEBHOOK_NOTIFY":
         payload = {
@@ -66,6 +86,8 @@ def _execute_additional_action(action, threat, db):
             payload["threat"]["isp"] = geo.get("isp", "Unknown")
         webhook_url = webhook_url_from_session()
         if not webhook_url:
+            # Put it back so it can be sent once a URL is configured
+            db.update_action_status(action.id, "RECOMMENDED")
             return False, "No webhook URL is configured. Add one on the Setup page."
         success = send_webhook(payload, webhook_url)
         message = "Webhook notification sent." if success else "Webhook notification failed. Check the server log."
@@ -94,8 +116,9 @@ def show_active_blocks(config) -> None:
         manager = SuricataManager(config, ip_manager=IPManager())
         expired = manager.expire_blocks()
         blocks = manager.list_blocks()
-    except Exception as exc:
-        st.error(f"Could not read the rules directory: {exc}")
+    except Exception:
+        logger.exception("Could not read the Suricata rules directory")
+        st.error("Could not read the Suricata rules directory. Check the server log for details.")
         return
     if expired:
         record("blocks_expired", {"count": expired})
@@ -123,17 +146,20 @@ def show_active_blocks(config) -> None:
                 if st.button("Unblock", key="unblock_button"):
                     if manager.unblock_ip(ip_to_unblock):
                         record("ip_unblocked", {"ip": ip_to_unblock})
+                        st.session_state.rules_changed = True
                         st.success(f"Removed the drop rule for {ip_to_unblock}.")
                         st.rerun()
                     else:
                         st.error("Could not remove the rule (dry-run mode leaves rules unchanged).")
 
-        if manager.needs_restart():
+        if manager.needs_restart() or st.session_state.get("rules_changed"):
             st.warning("Rules changed. Suricata needs to reload them before they take effect.")
         if SuricataManager.suricatasc_available():
             if st.button("Reload Suricata rules now", key="reload_rules"):
                 ok, message = manager.reload_rules()
                 record("rules_reloaded" if ok else "rules_reload_failed", {"message": message})
+                if ok:
+                    st.session_state.rules_changed = False
                 (st.success if ok else st.error)(message)
         else:
             st.caption("Install suricatasc (part of Suricata) to reload rules from here; "
@@ -168,7 +194,7 @@ def show() -> None:
     st.subheader("Filter actions")
     status_filter = st.multiselect(
         "Status values",
-        ["RECOMMENDED", "EXECUTED", "REJECTED", "FAILED"],
+        ["RECOMMENDED", "PROCESSING", "EXECUTED", "REJECTED", "FAILED"],
         default=["RECOMMENDED"],
     )
 
@@ -248,29 +274,33 @@ def show() -> None:
                                     "Approve",
                                     key=f"approve_{action.id}_{index}",
                                 ):
-                                    try:
-                                        manager = SuricataManager(config, ip_manager=IPManager())
-                                        applied = _apply_drop_rule(manager, action, threat, db)
-                                        record("action_approved" if applied else "action_failed", {
-                                            "action_id": action.id, "type": action.action_type,
-                                            "source_ip": threat.source_ip, "dry_run": config.SURICATA_DRY_RUN,
-                                        })
-                                        if applied:
-                                            st.success("Action approved and executed.")
-                                            st.rerun()
-                                        else:
-                                            st.error(
-                                                "Failed to apply the Suricata rule. Only single-IP drop rules "
-                                                "for non-whitelisted IPs are accepted."
-                                            )
-                                    except Exception as exc:
-                                        st.error(f"Rule approval failed: {exc}")
+                                    manager = SuricataManager(config, ip_manager=IPManager())
+                                    applied = _apply_drop_rule(manager, action, threat, db)
+                                    if applied is None:
+                                        st.info(ALREADY_HANDLED)
+                                        st.rerun()
+                                    record("action_approved" if applied else "action_failed", {
+                                        "action_id": action.id, "type": action.action_type,
+                                        "source_ip": threat.source_ip, "dry_run": config.SURICATA_DRY_RUN,
+                                    })
+                                    if applied:
+                                        st.session_state.rules_changed = not config.SURICATA_DRY_RUN
+                                        st.success("Action approved and executed.")
+                                        st.rerun()
+                                    else:
+                                        st.error(
+                                            "Failed to apply the Suricata rule. Only single-IP drop rules "
+                                            "for non-whitelisted IPs are accepted."
+                                        )
                             else:
                                 if st.button(
                                     "Mark done" if action.action_type in MANUAL_ACTIONS else "Execute",
                                     key=f"execute_{action.id}_{index}",
                                 ):
                                     success, message = _execute_additional_action(action, threat, db)
+                                    if success is None:
+                                        st.info(message)
+                                        st.rerun()
                                     record("action_executed" if success else "action_failed", {
                                         "action_id": action.id, "type": action.action_type,
                                     })
@@ -288,9 +318,11 @@ def show() -> None:
                                 "Reject",
                                 key=f"reject_{action.id}_{index}",
                             ):
-                                db.update_action_status(action.id, "REJECTED")
-                                record("action_rejected", {"action_id": action.id, "type": action.action_type})
-                                st.info("Action rejected.")
+                                if db.transition_action(action.id, "RECOMMENDED", "REJECTED"):
+                                    record("action_rejected", {"action_id": action.id, "type": action.action_type})
+                                    st.info("Action rejected.")
+                                else:
+                                    st.info(ALREADY_HANDLED)
                                 st.rerun()
                     elif action_cols[2]:
                         action_cols[2].write(" ")
@@ -315,30 +347,30 @@ def show() -> None:
                         if a.action_type == "SURICATA_DROP_RULE"
                     ]
                     if suricata_candidates:
-                        try:
-                            manager = SuricataManager(config, ip_manager=IPManager())
-                            approved = 0
-                            for action in suricata_candidates:
-                                if _apply_drop_rule(manager, action, db.get_threat(action.threat_id), db):
-                                    approved += 1
-                            record("actions_batch_approved", {
-                                "approved": approved, "requested": len(suricata_candidates),
-                            })
-                            st.success(
-                                f"Approved {approved} of {len(suricata_candidates)} Suricata actions."
-                            )
-                            st.rerun()
-                        except Exception as exc:
-                            st.error(f"Batch approval failed: {exc}")
+                        manager = SuricataManager(config, ip_manager=IPManager())
+                        approved = 0
+                        for action in suricata_candidates:
+                            if _apply_drop_rule(manager, action, db.get_threat(action.threat_id), db):
+                                approved += 1
+                        if approved and not config.SURICATA_DRY_RUN:
+                            st.session_state.rules_changed = True
+                        record("actions_batch_approved", {
+                            "approved": approved, "requested": len(suricata_candidates),
+                        })
+                        st.success(
+                            f"Approved {approved} of {len(suricata_candidates)} Suricata actions."
+                        )
+                        st.rerun()
                     else:
                         st.info("No Suricata rules are awaiting approval.")
 
             with batch_col2:
                 if st.button("Reject all recommended actions"):
-                    for action in recommended_actions:
-                        db.update_action_status(action.id, "REJECTED")
-                    record("actions_batch_rejected", {"count": len(recommended_actions)})
-                    st.info(f"Rejected {len(recommended_actions)} actions.")
+                    rejected = sum(
+                        db.transition_action(action.id, "RECOMMENDED", "REJECTED") for action in recommended_actions
+                    )
+                    record("actions_batch_rejected", {"count": rejected})
+                    st.info(f"Rejected {rejected} actions.")
                     st.rerun()
     else:
         st.info("No actions match the selected filters.")

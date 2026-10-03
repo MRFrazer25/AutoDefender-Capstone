@@ -32,15 +32,21 @@ def new_app(state=None):
     return at
 
 
-def signed_in_state(env, page="Setup", **extra):
+def signed_in_app(env, page="Setup", **extra):
+    """Sign in through the real login form, then open `page` with the demo settings."""
+    at = new_app().run()
+    at.text_input[0].input("test-password-for-apptest")
+    at.button[0].click().run()
+    assert at.session_state["authenticated"], errors(at)
     state = {
-        "authenticated": True, "last_activity": time.time(),
         "setup_complete": True, "db_path": env["db"], "log_path": "demo/example_suricata_log.json",
         "suricata_enabled": True, "suricata_dry_run": True, "suricata_rules_dir": "./suricata_rules",
         "navigation": page,
     }
     state.update(extra)
-    return state
+    for key, value in state.items():
+        at.session_state[key] = value
+    return at.run()
 
 
 def errors(at):
@@ -100,15 +106,43 @@ def test_lockout_after_five_failures(app_env):
     assert "sign_in_locked" in {e["action"] for e in audit.entries()}
 
 
+def test_lockout_survives_restart(app_env):
+    at = new_app().run()
+    for _ in range(5):
+        at.text_input[0].input("not-the-password")
+        at.button[0].click().run()
+    st.cache_resource.clear()  # Same as restarting the server: in-memory counters are gone
+    at = new_app().run()
+    at.text_input[0].input("test-password-for-apptest")
+    at.button[0].click().run()
+    assert any("Too many failed attempts" in e.value for e in at.error)
+
+
+def test_example_password_is_refused(app_env, monkeypatch):
+    monkeypatch.setenv("AUTODEFENDER_UI_PASSWORD", "replace-with-a-long-random-password")
+    at = new_app().run()
+    assert any("example value" in e.value for e in at.error)
+
+
+def test_password_change_signs_out(app_env, monkeypatch):
+    at = new_app().run()
+    at.text_input[0].input("test-password-for-apptest")
+    at.button[0].click().run()
+    assert nav_pages(at)
+    monkeypatch.setenv("AUTODEFENDER_UI_PASSWORD", "a-brand-new-password-123")
+    at.run()
+    assert not at.sidebar.radio and any("password changed" in i.value for i in at.info)
+
+
 @pytest.mark.parametrize("page", ["Setup", "Dashboard", "Incidents", "Threat Analysis", "Action Management",
                                   "IP Management", "Playbook Editor", "Settings", "Audit Log", "Documentation"])
 def test_every_page_renders(app_env, page):
-    at = new_app(signed_in_state(app_env, page)).run()
+    at = signed_in_app(app_env, page)
     assert not at.exception and not at.error, errors(at)
 
 
 def test_dashboard_runs_real_monitoring(app_env):
-    at = new_app(signed_in_state(app_env, "Dashboard")).run()
+    at = signed_in_app(app_env, "Dashboard")
     next(c for c in at.checkbox if "existing entries" in c.label).check()
     next(c for c in at.checkbox if c.label == "Auto-refresh").uncheck()
     next(b for b in at.button if b.label == "Start monitoring").click().run()
@@ -129,7 +163,7 @@ def test_dashboard_runs_real_monitoring(app_env):
 def test_approving_a_rule_is_audited_and_demo_db_untouched(app_env):
     demo = app_env["repo"] / "demo" / "demo_config.db"
     before = hashlib.sha256(demo.read_bytes()).hexdigest()
-    at = new_app(signed_in_state(app_env, "Action Management")).run()
+    at = signed_in_app(app_env, "Action Management")
     approve = [b for b in at.button if b.label == "Approve"]
     approve[0].click().run()
     assert not at.exception, errors(at)

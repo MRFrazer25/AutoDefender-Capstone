@@ -17,6 +17,27 @@ logger = logging.getLogger(__name__)
 MAX_EVENT_LENGTH = 1_000_000
 
 
+# Event fields kept with each stored threat. Everything else (HTTP URLs and user
+# agents, DNS queries, TLS names, payloads) is dropped: AutoDefender doesn't use it,
+# and it can describe the browsing of people on the monitored network.
+STORED_EVENT_FIELDS = (
+    "timestamp", "flow_id", "event_type", "src_ip", "src_port", "dest_ip", "dest_port",
+    "proto", "app_proto", "in_iface",
+)
+STORED_ALERT_FIELDS = ("action", "gid", "signature_id", "rev", "signature", "category", "severity")
+
+
+def minimal_event(event: Dict) -> Dict:
+    """Return only the event fields AutoDefender stores (data minimization)."""
+    if not isinstance(event, dict):
+        return {}
+    kept = {key: event[key] for key in STORED_EVENT_FIELDS if key in event}
+    alert = event.get("alert")
+    if isinstance(alert, dict):
+        kept["alert"] = {key: alert[key] for key in STORED_ALERT_FIELDS if key in alert}
+    return kept
+
+
 def to_utc(value: datetime) -> datetime:
     """Return a timezone-aware UTC datetime (naive values are assumed to be UTC)."""
     if value.tzinfo is None:

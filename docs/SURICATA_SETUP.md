@@ -168,27 +168,23 @@ python main.py --monitor /usr/local/var/log/suricata/eve.json --model phi4-mini
 
 ### Step 3: Generate Test Traffic
 
+The standard Suricata check is a request to `testmynids.org`, which returns a response that the default ruleset flags ("GPL ATTACK_RESPONSE id check returned root"):
+
 **Windows:**
 ```powershell
-# Port scan (creates alerts)
-nmap -p 1-1000 localhost
-
-# Or use PowerShell
-Test-NetConnection -ComputerName localhost -Port 80
-Test-NetConnection -ComputerName localhost -Port 443
-Invoke-WebRequest -Uri "http://testphp.vulnweb.com/" -UseBasicParsing
+Invoke-WebRequest -Uri "http://testmynids.org/uid/index.html" -UseBasicParsing
 ```
 
 **Linux/Mac:**
 ```bash
-# Port scan
-nmap -p 1-1000 localhost
-
-# HTTP requests
-curl http://testphp.vulnweb.com/
+curl http://testmynids.org/uid/index.html
 ```
 
-You should see threats being detected in real-time in the AutoDefender terminal!
+To test port scan detection, scan a device on your own network that you own (for example `nmap -p 1-1000 192.168.1.50`). Scanning `localhost` won't work, because Suricata watching your network interface doesn't see loopback traffic. Only scan devices you have permission to scan.
+
+You should see threats being detected in real time in the AutoDefender terminal.
+
+Prefer the web console? Set `AUTODEFENDER_UI_PASSWORD`, run `python -m streamlit run streamlit_app.py`, enter the same `eve.json` path on the Setup page, and click **Start monitoring** on the Dashboard.
 
 ---
 

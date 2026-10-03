@@ -9,7 +9,8 @@ from ai_explainer import AIExplainer
 from config import Config
 from database import Database
 from streamlit_pages.session_config import config_from_session, record
-from streamlit_pages.setup import is_valid_service_url
+from streamlit_pages.setup import is_valid_model_name, is_valid_service_url
+from utils.geoip import geoip_enabled
 from utils.path_utils import sanitize_path
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,10 @@ def show() -> None:
             placeholder="Example: phi4-mini",
         )
         st.caption("Ollama runs locally, so threat data sent for explanations stays on your network.")
+        if geoip_enabled():
+            st.caption("GeoIP: enabled with local GeoLite2 database files (no lookups leave this machine).")
+        else:
+            st.caption("GeoIP: off. Set AUTODEFENDER_GEOIP_CITY_DB to a GeoLite2-City.mmdb file to add location context.")
 
         test_col, save_col = st.columns(2)
         with test_col:
@@ -119,6 +124,8 @@ def show() -> None:
             if st.button("Save AI settings"):
                 if not is_valid_service_url(endpoint):
                     st.error("Ollama endpoint must be an http:// or https:// URL.")
+                elif model.strip() and not is_valid_model_name(model.strip()):
+                    st.error("Ollama model name can only contain letters, digits, '.', '_', ':', '/' and '-'.")
                 else:
                     st.session_state.ollama_endpoint = endpoint.strip()
                     st.session_state.ollama_model = model.strip()

@@ -27,6 +27,8 @@ class ApprovalHandler:
         self.console = console or Console()
         self.approval_callback: Optional[Callable] = None
         self.rejection_callback: Optional[Callable] = None
+        # Called when a prompt can't be shown; the action is left undecided
+        self.skip_callback: Optional[Callable] = None
     
     def set_approval_callback(self, callback: Callable):
         """
@@ -93,7 +95,11 @@ class ApprovalHandler:
                 self.rejection_callback(action)
             return False
         except Exception as e:
+            # No usable terminal (e.g. EOF on stdin): approve nothing, and let the
+            # caller leave the action pending for the web console
             logger.error(f"Error in approval prompt: {e}")
+            if self.skip_callback:
+                self.skip_callback(action)
             return False
     
     def _build_prompt_message(self, action: Action, threat_description: Optional[str] = None) -> str:

@@ -164,6 +164,7 @@ def monitor_mode(config: Config, log_path: str, ip_manager: Optional[IPManager] 
             approval_handler = ApprovalHandler(console)
             approval_handler.set_approval_callback(monitor.approve_suricata_action)
             approval_handler.set_rejection_callback(monitor.reject_suricata_action)
+            approval_handler.skip_callback = monitor.skip_suricata_action
             
             console.print("[cyan]Suricata auto-approval disabled. Manual approval prompts will appear for AI-generated rules.[/cyan]")
             

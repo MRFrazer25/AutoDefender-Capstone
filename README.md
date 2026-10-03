@@ -25,10 +25,10 @@ AutoDefender started as my senior year college capstone project in fall 2025. I 
 - **Dual Interface**: Choose between Terminal UI (Rich-based TUI) or Web UI (Streamlit)
 - **Web Dashboard**: Modern, intuitive web interface with real-time monitoring, interactive charts, and action management
 - **Playbook Editor**: Create and customize response workflows directly from the browser
-- **Database Storage**: SQLite database for storing threats, actions, and statistics
+- **Database Storage**: SQLite database for threats and actions
 - **Threat Filtering**: Filter threats by severity, type, IP address, or date range
 - **Search Functionality**: Search threats by description, IP, or event type
-- **Export Capabilities**: Export threats and statistics to CSV or JSON format
+- **Export Capabilities**: Export threats (with MITRE ATT&CK tags) to CSV or JSON
 - **IP Management**: Whitelist trusted IPs (ignored by detection) and blacklist known malicious IPs (their traffic raises HIGH alerts)
 - **Configurable AI Analysis**: Choose which threat severities to analyze with AI
 - **Agentic Suricata Integration**: AI-driven automatic Suricata rule generation with permission prompts and safety controls
@@ -119,7 +119,7 @@ The demo database (`demo/demo_config.db`) is pre-populated and included in the r
         - *Database path*: leave default `autodefender.db` or point somewhere else
         - *Ollama endpoint*: `http://127.0.0.1:11434`
         - *Ollama model*: the model you pulled (e.g., `phi4-mini`)
-       - *(Optional)* Notification webhook URL: paste the Slack/Teams webhook if you want approved actions to ping that channel
+        - *(Optional)* Notification webhook URL: paste the Slack/Teams webhook if you want approved actions to ping that channel
         - Optional: enable Suricata rule management and pick a rules directory (default `./suricata_rules`)
      3. Click **Save configuration**. You can now navigate to Dashboard, Threat Analysis, etc.
      4. Need a quick demo? Use the **Load demo configuration** button on the Setup page. It auto-fills:
@@ -128,7 +128,7 @@ The demo database (`demo/demo_config.db`) is pre-populated and included in the r
         - Ollama endpoint: `http://127.0.0.1:11434`
         - Model: `phi4-mini`
         - Rules dir: `./suricata_rules` with dry-run enabled
-        Save the form afterwards, and switch back to your real paths when ready.
+        The demo is ready right away; switch back to your real paths when you're done.
 
    - **Command-line interface (CLI)**:  
      `python main.py --monitor <path-to-eve.json>`  
@@ -285,7 +285,7 @@ The project ships with a built-in demo dataset that works on both localhost and 
 - `demo/demo_config.db` - pre-populated demo SQLite database (included in repository)
 - `demo/log_replayer.py` - optional tool to replay demo events
 
-**Note:** The demo database (`demo/demo_config.db`) is included in the repository and contains example/test IP addresses only (no personal information). It's ready to use immediately.
+**Note:** The demo database (`demo/demo_config.db`) is included in the repository and only contains private or documentation IP addresses and fictional organizations. It's ready to use immediately.
 
 In the Streamlit Setup page, click **Load demo configuration** to pre-fill:
 - Suricata log path: `demo/example_suricata_log.json`
@@ -295,7 +295,7 @@ In the Streamlit Setup page, click **Load demo configuration** to pre-fill:
 - Suricata rules directory: `./suricata_rules`
 - Suricata rule management enabled with dry-run mode
 
-Review the fields and click **Save configuration** to apply. The demo works immediately on both localhost and the hosted Streamlit app. Switch back to your real paths afterwards to monitor live data.
+The demo works immediately on both localhost and the hosted Streamlit app. Switch back to your real paths afterwards to monitor live data.
 
 Need more help with Suricata itself? Check the following resources:
 - Official docs: [https://docs.suricata.io/](https://docs.suricata.io/)
@@ -369,8 +369,8 @@ Edit `config.py` or create a `config.ini` file to customize:
 - Suricata log file paths
 - Ollama endpoint (default: `http://localhost:11434`)
 - Database path
-- Detection thresholds (port scan threshold, suspicious ports)
-- Action policies (auto-approval settings)
+- Detection thresholds (port scan threshold and window, repeat alert cooldown)
+- Suricata options (dry run, auto-approval, block duration, rule reload)
 
 **Note:** Use the `--model` flag to specify which Ollama model to use for AI features.
 
@@ -408,108 +408,25 @@ export WEBHOOK_URL=https://your-webhook-url   # must be https://
 - **Start Suricata**: open PowerShell -> `cd "C:\Program Files\Suricata"` -> `.\suricata.exe -c suricata.yaml -i "Wi-Fi"`
 - **Run AutoDefender UI**: in the project folder -> set `AUTODEFENDER_UI_PASSWORD` -> `python -m streamlit run streamlit_app.py`
 - **Run CLI monitor**: `python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model phi4-mini`
-- **Load demo data**: Setup page -> "Load demo configuration" -> Save (works on both localhost and Streamlit Cloud)
+- **Load demo data**: Setup page -> "Load demo configuration" (works on both localhost and Streamlit Cloud)
 - **Replay demo log** (optional): `python demo/log_replayer.py demo/example_suricata_log.json --interval 0.5 --loop`
 - **Refresh demo database** (optional): `python tools/populate_demo_db.py` - Note: demo database is pre-populated in the repository
 - **Enable Slack/Teams alerts**: paste your webhook URL into the Setup page, then approve a `WEBHOOK_NOTIFY` action in Action Management.
 
 ### Suricata Integration (Agentic Features)
 
-AutoDefender can automatically generate and manage Suricata rules based on detected threats using AI.
+When monitoring finds a HIGH or CRITICAL threat, AutoDefender can propose a Suricata drop rule for the attacker's IP (AI-written when Ollama is available, built-in otherwise). Every rule is validated to block exactly one non-whitelisted source IP, written only after approval (CLI prompt or the web console's Action Management page) unless you turn on auto-approval, and backed up before each change.
 
-#### Features
-- **AI-Driven Rule Generation**: Uses Ollama to generate context-aware Suricata drop rules
-- **Permission Prompts**: Requires manual approval by default (can be configured for auto-approval)
-- **Interactive CLI Workflow**: Prompts appear in the terminal to approve or reject each AI-generated rule
-- **Dry-Run Mode**: Test rule generation without making changes
-- **Automatic Backups**: Creates timestamped backups before modifying rule files
-- **Path Validation**: Only modifies files in safe, app-controlled directories
-- **Rule Validation**: Validates rule syntax before writing
-- **Real-Time Integration**: Processes HIGH/CRITICAL threats immediately
-
-#### Configuration
-
-**Via Environment Variables:**
-```bash
-export SURICATA_ENABLED=true                    # Enable Suricata integration
-export SURICATA_RULES_DIR=./suricata_rules      # Path to rules directory
-export AUTO_APPROVE_SURICATA=false              # Require manual approval (recommended)
-export SURICATA_DRY_RUN=false                   # Dry-run mode (test without executing)
-```
-
-**Via config.ini:**
-```ini
-[suricata]
-enabled = true
-rules_dir = ./suricata_rules
-auto_approve = false
-dry_run = false
-```
-
-#### Usage
-
-1. **Enable Suricata Integration**:
 ```bash
 export SURICATA_ENABLED=true
-python main.py --monitor /var/log/suricata/eve.json
-```
-> With `AUTO_APPROVE_SURICATA=false`, AutoDefender will pause to show an interactive approval prompt for each AI-generated rule.
-
-2. **Dry-Run Mode (Test Without Executing)**:
-```bash
-export SURICATA_ENABLED=true
-export SURICATA_DRY_RUN=true
-python main.py --monitor /var/log/suricata/eve.json
+export SURICATA_DRY_RUN=true          # Start here: rules are logged, not written
+export AUTO_APPROVE_SURICATA=false    # Ask before writing each rule (recommended)
+python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
 ```
 
-3. **Auto-Approve Mode (Advanced)**:
-```bash
-export SURICATA_ENABLED=true
-export AUTO_APPROVE_SURICATA=true  # Use with caution
-python main.py --monitor /var/log/suricata/eve.json
-```
+Drop rules only block traffic when Suricata runs inline (IPS mode). Include `suricata_rules/autodefender_custom.rules` in your `suricata.yaml`, then reload (`suricatasc`, the console's reload button, or `SURICATA_AUTO_RELOAD=true`) or restart Suricata after changes. Active blocks can be unblocked or set to expire (see **Blocks and Expiry** above).
 
-#### Manual Approval Workflow
-
-When `AUTO_APPROVE_SURICATA` is disabled (default), threats that qualify for Suricata remediation trigger an interactive prompt:
-
-1. AutoDefender displays the full AI-generated rule along with context about the triggering threat.
-2. Press `y` to approve (the rule is written to the Suricata rules file) or `n` to reject.
-3. **Batch Approval**: If 3+ actions are pending, you'll be offered the option to approve/reject all at once or review individually.
-4. The dashboard's **Pending Agentic Actions** panel updates in real time to reflect approvals/rejections.
-5. Backups are created automatically before each approved rule is written.
-
-This workflow keeps humans in the loop while still benefiting from real-time AI triage.
-
-#### How It Works
-
-1. **Threat Detection**: AutoDefender detects HIGH or CRITICAL threat
-2. **AI Analysis**: AI generates a Suricata drop rule based on threat context
-3. **Permission Prompt**: System asks for approval (unless auto-approve is enabled)
-4. **Rule Execution**: Upon approval, rule is added to custom rules file with automatic backup
-5. **Dashboard Display**: Pending actions shown in real-time dashboard
-
-#### Safety Features
-
-- **Default to Manual Approval**: Requires user confirmation before executing rules
-- **Batch Approval**: Efficiently approve/reject multiple pending actions at once (3+ actions)
-- **Dry-Run Mode**: Test rule generation without making changes
-- **Automatic Backups**: Timestamped backups created before each modification
-- **Path Validation**: Only modifies files within app-controlled directories
-- **Rule Validation**: Checks rule syntax before writing
-- **Master Switch**: `SURICATA_ENABLED` flag to disable all operations
-- **Audit Logging**: All actions logged to database for review
-- **Health Monitoring**: Automatic checks of rules directory, disk space, and file permissions
-- **Restart Notifications**: Dashboard alerts when Suricata needs restart to apply new rules
-
-#### Windows Support
-
-Suricata integration works on Windows using file-based rule management:
-- Rules are written to custom rules file immediately
-- Dashboard displays a restart banner when new rules have been added
-- Suricata must be restarted or reloaded to pick up new rules
-- No control socket (`suricatasc`) required
-- Health monitoring tracks rules file status and disk space
+See [docs/AGENTIC_GUIDE.md](docs/AGENTIC_GUIDE.md) for the approval workflow, configuration options, rule format, and troubleshooting.
 
 ## Project Structure
 
@@ -546,6 +463,7 @@ AutoDefender-Capstone/
 |-- docs/                   # Additional guides and references
 |   |-- SURICATA_SETUP.md   # Suricata installation and configuration
 |   |-- AGENTIC_GUIDE.md    # AI-driven agentic automation guide
+|   |-- THREAT_MODEL.md     # What is stored, who can act, risks and controls
 |-- tests/                  # pytest suite (run: python -m pytest)
 |-- tools/
 |   |-- check_demo_data.py  # Fails if real IPs/organizations appear in the repo
@@ -559,7 +477,7 @@ AutoDefender-Capstone/
 
 ## Security & Privacy
 
-- **Password Required**: The web console refuses to start without `AUTODEFENDER_UI_PASSWORD` (12+ characters). There are no user accounts or sign-up pages. The password is compared in constant time, and 5 wrong attempts lock sign-in for 5 minutes across all browser tabs
+- **Password Required**: The web console refuses to start without `AUTODEFENDER_UI_PASSWORD` (12+ characters, and not one of the example values from these docs). There are no user accounts or sign-up pages. The password is compared in constant time; more than 5 wrong attempts in 5 minutes locks sign-in (this survives restarts), and changing the password signs out open sessions
 - **Audit Trail**: Security-relevant actions are recorded in a local, hash-chained, tamper-evident audit log
 - **Local Processing**: Analysis, AI explanations (Ollama), and GeoIP lookups all run locally. Nothing leaves your machine unless you configure a webhook
 - **Safe Rule Writing**: Only single-IP `drop` rules are written. AI-suggested rules must target the threat's own source IP; rules for `any`, loopback, or whitelisted IPs are refused, and SIDs are assigned by AutoDefender
@@ -570,10 +488,16 @@ AutoDefender-Capstone/
 - **File Permissions**: On Linux/macOS, new databases and CLI exports are created readable by your user only; web exports are generated in memory, not saved on the server
 - **Untrusted Log Data**: Log fields and AI output are escaped before display, fenced off in AI prompts, and neutralized in CSV exports (no spreadsheet formulas)
 - **SQL Injection Protection**: All database queries use parameterized statements
-- **Upload Handling**: Uploaded files are saved under `uploads/` with random names and an allow-listed extension
+- **Upload Handling**: Uploaded files are saved under `uploads/` with random names, an allow-listed extension, and a 50 MB limit
+- **Data Minimization**: Stored threats keep only the event fields AutoDefender uses; URLs, DNS names, TLS details, and payloads from the original log are dropped
+- **AI Limits**: AI work runs on a small bounded worker pool with a per-minute call budget (`AUTODEFENDER_AI_CALLS_PER_MINUTE`, default 30), so an alert flood can't overload Ollama or the machine
+- **Safe Concurrent Approvals**: An action is claimed in the database before it runs, so approving it from two tabs (or the CLI and the web console) can't apply it twice
+- **Webhook Targets**: Webhook URLs must be https and point at a public host (no localhost or private addresses)
 - **CORS/XSRF Protection**: Streamlit's CORS and XSRF protections stay on (see `.streamlit/config.toml`)
 - **No Data Collection**: No telemetry or usage data is collected
 - **No Real-World Data in the Repo**: Demo data and docs only use private and documentation IP ranges, documentation AS numbers, and fictional organization names. `python tools/check_demo_data.py` enforces this, and the GitHub Actions workflow runs it (plus the test suite, bandit, and pip-audit) on every push. Dependabot opens weekly update PRs for dependencies, actions, and the Docker base image
+
+See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for what AutoDefender stores, what it talks to, and the risks each control covers.
 
 ## Development and Tests
 

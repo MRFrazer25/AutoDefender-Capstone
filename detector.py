@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 from models import Threat
 from config import Config
-from parser import to_utc
+from parser import minimal_event, to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,7 @@ class ThreatDetector:
             event_type=event_type,
             severity=severity,
             description=description,
-            raw_event=event.get('raw_event', event)
+            raw_event=minimal_event(event.get('raw_event', event))
         )
 
     def _detect_alert_threat(self, event: Dict, alert: Dict, now: datetime) -> Optional[Threat]:

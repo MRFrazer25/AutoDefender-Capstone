@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 from typing import Any, Dict, Optional
@@ -13,9 +14,25 @@ logger = logging.getLogger(__name__)
 
 
 def is_valid_webhook_url(url: str) -> bool:
-    """Only allow https webhook URLs with a host."""
-    parsed = urlparse(url or "")
-    return parsed.scheme == "https" and bool(parsed.hostname)
+    """Allow only https URLs that point at a public host.
+
+    Webhooks go to services like Slack or Teams, so local and private
+    addresses are refused (this stops the webhook from being aimed at
+    services inside your network).
+    """
+    try:
+        parsed = urlparse(url or "")
+        host = (parsed.hostname or "").lower()
+    except ValueError:
+        return False
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        return False
+    if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+        return False
+    try:
+        return ipaddress.ip_address(host).is_global
+    except ValueError:
+        return True  # A hostname, not an IP literal
 
 
 def send_webhook(payload: Dict[str, Any], url: Optional[str] = None) -> bool:

@@ -1,6 +1,6 @@
 # Agentic Suricata Integration Guide
 
-This guide covers AutoDefender's AI-driven agentic capabilities for automatic Suricata rule generation and management.
+This guide covers how AutoDefender uses AI to propose Suricata drop rules, how you approve them, and the safety controls around them.
 
 ## Table of Contents
 - [Overview](#overview)
@@ -8,22 +8,25 @@ This guide covers AutoDefender's AI-driven agentic capabilities for automatic Su
 - [Features](#features)
 - [Configuration](#configuration)
 - [Usage Examples](#usage-examples)
-- [Safety Features](#safety-features)
-- [Implementation Details](#implementation-details)
+- [Manual Approval Workflow](#manual-approval-workflow)
+- [Managing Active Blocks](#managing-active-blocks)
+- [How It Works](#how-it-works)
+- [Troubleshooting](#troubleshooting)
+- [Best Practices](#best-practices)
 
 ---
 
 ## Overview
 
-AutoDefender can automatically analyze threats and generate/execute Suricata rules in real-time using AI, with user permission prompts and comprehensive safety controls.
+When AutoDefender detects a HIGH or CRITICAL threat while monitoring, it can ask a local AI model (Ollama) to propose a Suricata drop rule for the attacker's IP. A person approves the rule before it is written, unless you explicitly turn on auto-approval.
 
-**Key Capabilities:**
-- AI-driven Suricata drop rule generation
-- Interactive permission prompts (manual approval by default)
+**Key capabilities:**
+- AI-proposed drop rules, validated so they can only block the threat's own source IP
+- Approval prompts in the CLI and approve/reject buttons in the web console
 - Dry-run mode for safe testing
 - Automatic rule file backups
-- Path validation and rule syntax checking
-- Real-time integration with HIGH/CRITICAL threats
+- Active block list with unblock, optional block expiry, and rule reload via `suricatasc`
+- Every approval, rejection, and unblock recorded in the local audit log
 
 ---
 
@@ -33,65 +36,49 @@ AutoDefender can automatically analyze threats and generate/execute Suricata rul
 
 **Windows PowerShell:**
 ```powershell
-# Enable Suricata integration in dry-run mode
 $env:SURICATA_ENABLED="true"
 $env:SURICATA_DRY_RUN="true"
 $env:SURICATA_RULES_DIR="./suricata_rules"
 $env:AUTO_APPROVE_SURICATA="false"
 
-# Run monitor
 python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model phi4-mini
 ```
 
 **Linux/Mac:**
 ```bash
-# Enable Suricata integration in dry-run mode
 export SURICATA_ENABLED=true
 export SURICATA_DRY_RUN=true
 export SURICATA_RULES_DIR=./suricata_rules
 export AUTO_APPROVE_SURICATA=false
 
-# Run monitor
 python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
 ```
 
 ### What to Expect
 
 When HIGH or CRITICAL threats are detected:
-1. AutoDefender analyzes the threat with AI
-2. AI generates a Suricata drop rule
-3. An interactive approval prompt appears in the terminal
-4. You can approve (y) or reject (n) the proposed rule
-5. Approved rules are added to the rules file (or simulated in dry-run mode)
-6. The dashboard shows pending actions in real-time
+1. AutoDefender asks the AI for a drop rule (or uses its built-in rule if Ollama is unavailable or busy)
+2. The rule is validated: one `drop` rule for exactly the threat's source IP
+3. An approval prompt appears in the terminal
+4. You approve (`y`) or reject (`n`)
+5. Approved rules are added to the rules file (or only logged in dry-run mode)
 
 ---
 
 ## Features
 
-### Core Features
-
-- **AI-Driven Rule Generation**: Uses Ollama to generate context-aware Suricata drop rules
-- **Permission Prompts**: Requires manual approval by default (configurable for auto-approval)
-- **Interactive CLI Workflow**: Rich-formatted prompts for action approval/rejection
-- **Batch Approval**: Efficiently approve/reject multiple pending actions at once (3+ actions)
-- **Dry-Run Mode**: Test rule generation without making actual changes
-- **Automatic Backups**: Creates timestamped backups before modifying rule files
-- **Path Validation**: Only modifies files in safe, app-controlled directories
-- **Rule Validation**: Validates rule syntax before writing
-- **Real-Time Integration**: Processes HIGH/CRITICAL threats immediately
-
-### Safety Features
-
-- **Default to Manual Approval**: Requires user confirmation before executing rules
-- **Dry-Run Mode**: Test without affecting actual Suricata rules
-- **Automatic Backups**: Timestamped backups created before each modification
-- **Path Validation**: Only modifies files within app-controlled directories
-- **Rule Validation**: Checks rule syntax before writing
-- **Master Switch**: `SURICATA_ENABLED` flag to disable all operations
-- **Audit Logging**: All actions logged to database for review
-- **Health Monitoring**: Automatic checks of rules directory, disk space, and file permissions
-- **Restart Notifications**: Dashboard alerts when Suricata needs restart to apply new rules
+- **AI-proposed rules**: Ollama suggests a rule with a descriptive message; AutoDefender rebuilds it in a fixed format with its own SID
+- **Strict validation**: rules for `any`, address ranges, loopback/unspecified/multicast, or whitelisted IPs are refused, as is anything with extra options or more than one line
+- **Approval prompts**: Rich-formatted CLI prompts, with batch approve/reject when 3 or more rules are waiting
+- **Web console approvals**: Action Management lists pending actions with Approve/Reject buttons
+- **No double-applies**: an action is claimed in the database before it runs, so the CLI and the web console can't both apply it
+- **Dry-run mode**: test the whole flow without changing the rules file
+- **Backups**: a timestamped backup before every change; the 10 most recent are kept
+- **Path validation**: only the configured rules directory is written
+- **Active blocks**: see every rule AutoDefender wrote, unblock IPs, and optionally let blocks expire
+- **Rule reload**: reload Suricata's rules with `suricatasc` instead of restarting
+- **Audit log**: approvals, rejections, auto-approvals, and unblocks are recorded in `audit.db` (hash-chained)
+- **Bounded AI use**: AI requests run on a small worker pool with a per-minute budget; extra threats get the built-in rule
 
 ---
 
@@ -100,20 +87,27 @@ When HIGH or CRITICAL threats are detected:
 ### Environment Variables
 
 ```bash
-# Master switch - enable/disable Suricata integration
+# Master switch
 SURICATA_ENABLED=true
 
-# Rules directory path
+# Rules directory
 SURICATA_RULES_DIR=./suricata_rules
 
-# Dry-run mode - test without executing
+# Dry run: log proposed rules without writing them
 SURICATA_DRY_RUN=true
 
-# Auto-approval - requires manual approval when false (recommended)
+# Write AI-proposed rules without asking (not recommended)
 AUTO_APPROVE_SURICATA=false
+
+# How long a block lasts in hours (0 = permanent until you unblock it)
+AUTODEFENDER_BLOCK_HOURS=0
+
+# Reload Suricata's rules with suricatasc after each change
+SURICATA_AUTO_RELOAD=false
+SURICATA_SOCKET=/var/run/suricata/suricata-command.socket
 ```
 
-### Via config.ini
+### Via config.ini (CLI `--config`)
 
 ```ini
 [suricata]
@@ -121,13 +115,18 @@ enabled = true
 rules_dir = ./suricata_rules
 auto_approve = false
 dry_run = false
+block_hours = 0
+auto_reload = false
+socket = /var/run/suricata/suricata-command.socket
 ```
 
 ### Configuration Precedence
 
-1. Command-line environment variables (highest priority)
-2. `config.ini` file
-3. Default values in `config.py` (lowest priority)
+1. `config.ini` passed with `--config` (highest priority)
+2. Environment variables
+3. Defaults in `config.py` (lowest priority)
+
+In the web console, the Setup and Settings pages override these for your browser session.
 
 ---
 
@@ -136,82 +135,69 @@ dry_run = false
 ### Example 1: Safe Testing with Dry-Run
 
 ```bash
-# Enable dry-run mode
 export SURICATA_ENABLED=true
 export SURICATA_DRY_RUN=true
 export AUTO_APPROVE_SURICATA=false
-
-# Monitor Suricata logs
 python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
 ```
 
-**Result:** AI-generated rules are displayed in the terminal but not written to disk.
+**Result:** Proposed rules are shown and logged but not written.
 
 ### Example 2: Manual Approval (Production Mode)
 
 ```bash
-# Enable Suricata integration with manual approval
 export SURICATA_ENABLED=true
 export SURICATA_DRY_RUN=false
 export AUTO_APPROVE_SURICATA=false
-
-# Monitor Suricata logs
 python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
 ```
 
-**Result:** Each AI-generated rule requires manual approval before being written.
+**Result:** Each rule needs your approval before it is written.
 
-### Example 3: Auto-Approval (Advanced)
+### Example 3: Auto-Approval with Expiring Blocks (Advanced)
 
 ```bash
-# Enable auto-approval (use with caution)
 export SURICATA_ENABLED=true
 export SURICATA_DRY_RUN=false
 export AUTO_APPROVE_SURICATA=true
-
-# Monitor Suricata logs
+export AUTODEFENDER_BLOCK_HOURS=24
 python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
 ```
 
-**Result:** HIGH/CRITICAL threats automatically trigger rule generation without approval prompts.
+**Result:** HIGH/CRITICAL threats are blocked without a prompt, and each block is removed after 24 hours. Rules are still limited to one non-whitelisted source IP, and every auto-approval is recorded in the audit log.
 
-### Example 4: Historical Analysis with Agentic Features
+### Example 4: Historical Analysis
 
 ```bash
-# Enable Suricata integration
-export SURICATA_ENABLED=true
-export SURICATA_DRY_RUN=true
-
-# Analyze existing log files
-python main.py --analyze /var/log/suricata/eve.json --model phi4-mini
+python main.py --analyze /var/log/suricata/eve.json
 ```
 
-**Result:** Analyzes historical threats and suggests rules (in dry-run mode).
+**Result:** Threats and recommended actions (including `SURICATA_DROP_RULE`) are stored in the database. Historical analysis doesn't write rules; review and approve them later in the web console's Action Management page.
 
 ---
 
 ## Manual Approval Workflow
 
-When `AUTO_APPROVE_SURICATA` is disabled (default), threats that qualify for Suricata remediation trigger an interactive prompt:
+When `AUTO_APPROVE_SURICATA` is off (the default), qualifying threats trigger a prompt:
 
-1. AutoDefender displays the full AI-generated rule along with context about the triggering threat
-2. Press `y` to approve (the rule is written to the Suricata rules file) or `n` to reject
-3. **Batch Approval**: If 3+ actions are pending, you'll be offered the option to approve/reject all at once or review individually
-4. The dashboard's **Pending Agentic Actions** panel updates in real-time to reflect approvals/rejections
-5. Backups are created automatically before each approved rule is written
+1. AutoDefender shows the proposed rule and the threat that triggered it
+2. Press `y` to approve (the rule is written) or `n` to reject
+3. With 3 or more rules waiting, you can approve or reject them all at once, or review each one
+4. If the prompt can't be shown (for example, no interactive terminal), nothing is approved; the action stays pending for the web console
+5. A backup of the rules file is made before each approved rule is written
 
-**Example Prompt:**
+**Example prompt:**
 ```
 +-------------------------------------------------------------------+
 | Agentic Action Requires Approval                                  |
 +-------------------------------------------------------------------+
 | Action Type: SURICATA_DROP_RULE                                   |
-| Proposed Rule:                                                     |
+| Proposed Rule:                                                    |
 | drop ip 203.0.113.45 any -> any any (msg:"AutoDefender: SSH       |
 | brute force"; sid:9000001; rev:1;)                                |
-|                                                                    |
+|                                                                   |
 | Threat: SSH Root Login Attempt from 203.0.113.45                  |
-|                                                                    |
+|                                                                   |
 | Requested at: 2025-11-14 10:30:15                                 |
 +-------------------------------------------------------------------+
 
@@ -220,57 +206,45 @@ Approve this action? [y/N]:
 
 ---
 
-## Implementation Details
+## Managing Active Blocks
 
-### New Files
+In the web console, open **Action Management -> Active blocks** to:
+- See each blocked IP, its SID, the reason, when it was blocked, and when it expires
+- **Unblock** an IP (its rule is removed after a backup)
+- **Reload Suricata rules now** if `suricatasc` is installed
 
-1. **`suricata_manager.py`**: Complete Suricata rule file management system
-   - Add drop rules to custom rules file with automatic SID management
-   - Automatic timestamped backups before modifications
-   - Rule syntax validation
-   - Path safety validation
-   - Dry-run mode support
-   - Backup cleanup functionality
+Set a block duration in **Settings -> Suricata integration** (0 = permanent, the default). Expired blocks are removed automatically while monitoring runs and whenever Action Management is opened. IP addresses get reassigned over time, so permanent blocks can eventually hit innocent users.
 
-2. **`approval_handler.py`**: Permission prompt and approval system
-   - Interactive CLI prompts for action approval
-   - Rich-formatted display of pending actions
-   - Callback support for approval/rejection workflows
-   - Batch approval functionality
+---
 
-### Modified Files
+## How It Works
 
-1. **`config.py`**: Added Suricata configuration options
-2. **`action_engine.py`**: Added `SURICATA_DROP_RULE` action type
-3. **`ai_explainer.py`**: New `suggest_suricata_rule()` function
-4. **`monitor.py`**: Real-time integration with agentic features
-5. **`analyzer.py`**: Historical analysis integration
-6. **`main.py`**: CLI support for agentic features
+1. **Detection**: the detector raises a HIGH or CRITICAL threat
+2. **Rule proposal**: the AI (or the built-in rule) proposes a drop rule for the source IP
+3. **Validation**: `parse_drop_rule()` and `build_drop_rule()` in `suricata_manager.py` accept only the exact single-IP format
+4. **Approval**: CLI prompt, web console button, or auto-approval if enabled
+5. **Write**: `SuricataManager.add_custom_rule()` backs up the file, skips IPs that are already blocked, assigns the SID, appends the rule, and records the block (and its expiry) in `autodefender_blocks.json`
+6. **Reload**: Suricata picks up the change after a reload or restart; the CLI dashboard and web console say when one is needed
 
-### How It Works
+### Main components
 
-1. **Threat Detection**: AutoDefender detects HIGH or CRITICAL threat
-2. **AI Analysis**: AI generates a Suricata drop rule based on threat context
-3. **Permission Prompt**: System asks for approval (unless auto-approve is enabled)
-4. **Rule Execution**: Upon approval, rule is added to custom rules file with automatic backup
-5. **Dashboard Display**: Pending actions shown in real-time dashboard
-6. **Suricata Restart**: Dashboard displays a restart banner when new rules are added
+- **`suricata_manager.py`**: rule validation, writing, backups, active blocks, unblock, expiry, and `suricatasc` reload
+- **`ai_explainer.py`**: AI explanations and rule suggestions, with untrusted-data fencing and a per-minute call budget
+- **`monitor.py`**: real-time processing with a bounded AI worker pool and the CLI approval queue
+- **`approval_handler.py`**: CLI approval prompts and batch approval
+- **`audit.py`**: the hash-chained audit log
 
 ### Rule File Structure
 
-AutoDefender creates and manages a custom rules file:
 - **Location**: `./suricata_rules/autodefender_custom.rules` (configurable)
-- **SID Range**: Assigned by AutoDefender starting at 9000001 (the AI's suggested SID is ignored)
-- **Format**: Only single-source-IP drop rules: `drop ip <ip> any -> any any (msg:"..."; sid:N; rev:1;)`
-- **Refused**: rules for `any`, ranges, loopback/unspecified/multicast, or whitelisted IPs, and anything with extra options or more than one line
-- **Backups**: Timestamped backups created before each modification; the 10 most recent are kept
-- **Enforcement**: Drop rules only block traffic when Suricata runs inline (IPS mode); in IDS mode they only alert
+- **SIDs**: assigned by AutoDefender starting at 9000001 (the AI's suggested SID is ignored)
+- **Format**: `drop ip <ip> any -> any any (msg:"..."; sid:N; rev:1;)`
+- **Block records**: `autodefender_blocks.json` in the same folder (when each rule was added and when it expires)
+- **Backups**: timestamped copies; the 10 most recent are kept
+- **Enforcement**: drop rules only block traffic when Suricata runs inline (IPS mode); in IDS mode they only alert
 
-**Example Rules File:**
+**Example rules file:**
 ```
-# AutoDefender Custom Rules
-# Generated: 2025-11-14 10:30:15
-
 drop ip 203.0.113.45 any -> any any (msg:"AutoDefender: Suricata Alert: ET SCAN Potential SSH Scan"; sid:9000001; rev:1;)
 drop ip 10.0.0.50 any -> any any (msg:"AutoDefender: Port scan detected from 10.0.0.50"; sid:9000002; rev:1;)
 ```
@@ -280,30 +254,27 @@ drop ip 10.0.0.50 any -> any any (msg:"AutoDefender: Port scan detected from 10.
 Actions are stored in the `actions` table:
 - `id`: Unique action ID
 - `threat_id`: Associated threat ID
-- `action_type`: Action type (e.g., `SURICATA_DROP_RULE`)
+- `action_type`: e.g. `SURICATA_DROP_RULE`
 - `description`: Full rule or action description
-- `status`: `RECOMMENDED`, `EXECUTED`, `REJECTED`, `FAILED`
+- `status`: `RECOMMENDED`, `PROCESSING` (briefly, while being applied), `EXECUTED`, `REJECTED`, `FAILED`
 - `timestamp`: When the action was created
-- `executed_at`: When the action was executed (if approved)
+- `executed_at`: When the action was executed
 
 ---
 
 ## Windows Support
 
-Suricata integration works on Windows using file-based rule management:
-- Rules are written to custom rules file immediately
-- Dashboard displays a restart banner when new rules have been added
-- Suricata must be restarted or reloaded to pick up new rules
-- No control socket (`suricatasc`) required
-- Health monitoring tracks rules file status and disk space
+Rule management is file-based, so it works on Windows:
+- Rules are written to the custom rules file immediately
+- Restart Suricata (or reload with `suricatasc` if available) to apply them
 
 **Restarting Suricata on Windows:**
 ```powershell
 # Stop Suricata (press Ctrl+C in the terminal where it's running)
-# Or kill the process
+# Or stop the process
 Get-Process suricata | Stop-Process
 
-# Restart Suricata
+# Start it again
 cd "C:\Program Files\Suricata"
 .\suricata.exe -c suricata.yaml -i "Wi-Fi"
 ```
@@ -314,44 +285,36 @@ cd "C:\Program Files\Suricata"
 
 ### No approval prompts appearing
 
-- Check `AUTO_APPROVE_SURICATA` is set to `false`
-- Verify `SURICATA_ENABLED` is set to `true`
-- Ensure threats are HIGH or CRITICAL severity
-- Check console output for errors
+- Check `AUTO_APPROVE_SURICATA` is `false` and `SURICATA_ENABLED` is `true`
+- Make sure threats are HIGH or CRITICAL severity
+- Check the console output for errors
 
 ### Rules not being written
 
-- Check if dry-run mode is enabled (`SURICATA_DRY_RUN=true`)
-- Verify rules directory exists and is writable
-- Check console output for permission errors
-- Verify path validation is passing
+- Dry-run mode may be on (`SURICATA_DRY_RUN=true`)
+- The IP may be whitelisted, loopback, or already blocked
+- Make sure the rules directory exists and is writable
+- Check the console or server log for "Refusing rule" messages
 
 ### Suricata not picking up new rules
 
-- Restart Suricata after new rules are added
-- Check if the rules file is included in `suricata.yaml`
-- Verify rules file path in Suricata config
-- Check Suricata logs for rule parsing errors
+- Reload or restart Suricata after rules change
+- Check that `autodefender_custom.rules` is listed in `suricata.yaml`
+- Check Suricata's logs for rule parsing errors
 
 ### Performance issues
 
-- Reduce AI analysis scope with `--ai-severities` flag
+- Limit AI explanations in historical analysis with `--ai-severities`
 - Raise the repeat alert cooldown (Settings -> Detection) so noisy sources create fewer threats
-- Use auto-approval only in non-critical environments
+- Lower `AUTODEFENDER_AI_CALLS_PER_MINUTE` if Ollama can't keep up
 
 ---
 
 ## Best Practices
 
-1. **Always start with dry-run mode** when testing new configurations
-2. **Use manual approval** in production environments
-3. **Regularly review** approved actions in the database
-4. **Test AI-generated rules** before deploying to production Suricata
-5. **Monitor disk space** for backup files
-6. **Keep backups** of your rules files
-7. **Document custom rules** with clear messages
-8. **Restart Suricata** after adding new rules
-9. **Review dashboard alerts** for restart notifications
-10. **Use appropriate Ollama models** for your security requirements
-
-
+1. **Start with dry-run mode** when testing a new setup
+2. **Keep manual approval on** in production
+3. **Set a block duration** so blocks don't outlive the IP's owner
+4. **Review Action Management history and the Audit Log page** regularly
+5. **Include `autodefender_custom.rules` in `suricata.yaml`** and reload after changes
+6. **Use a local Ollama model** suited to your hardware (for example `phi4-mini`)

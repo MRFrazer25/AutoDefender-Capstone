@@ -6,8 +6,10 @@ import hmac
 import importlib
 import os
 import logging
+import secrets
 import threading
 import time
+from datetime import datetime, timezone
 
 import streamlit as st
 
@@ -66,6 +68,12 @@ LOCKOUT_SECONDS = 300
 LOCAL_ADDRESSES = {"localhost", "127.0.0.1", "::1"}
 # Sign the session out after this long without any interaction
 IDLE_TIMEOUT_SECONDS = 30 * 60
+# Example passwords from the docs; using one unchanged would be a known default credential
+PLACEHOLDER_PASSWORDS = {
+    "replace-with-a-long-random-password",
+    "choose-a-long-password",
+    "pick-any-long-password",
+}
 
 # Page name -> module in streamlit_pages
 PAGES = {
@@ -87,11 +95,49 @@ RESTRICTED_BEFORE_SETUP = {
 
 @st.cache_resource
 def _login_guard() -> dict:
-    """Failed-login state shared by every browser session in this server process.
+    """In-memory sign-in state shared by every browser session in this server process.
 
-    Shared so that opening a new tab does not reset the attempt counter.
+    The lock serializes sign-in checks; the failure times back up the audit
+    log (which makes the lockout survive restarts) in case it can't be written.
     """
-    return {"lock": threading.Lock(), "failures": 0, "locked_until": 0.0}
+    return {"lock": threading.Lock(), "failures": []}
+
+
+@st.cache_resource
+def _fingerprint_key() -> bytes:
+    """Random per-process key for password fingerprints (never written anywhere)."""
+    return secrets.token_bytes(32)
+
+
+def _password_fingerprint(password: str) -> str:
+    """Keyed hash of the configured password, used to end sessions when it changes."""
+    return hmac.new(_fingerprint_key(), password.encode(), hashlib.sha256).hexdigest()
+
+
+def _lockout_remaining(failure_times: list, now: float) -> float:
+    """Seconds left in a lockout, given failed sign-in times since the last success.
+
+    Sliding window: at most MAX_ATTEMPTS failures per LOCKOUT_SECONDS.
+    """
+    recent = sorted(t for t in failure_times if now - t < LOCKOUT_SECONDS)
+    if len(recent) < MAX_ATTEMPTS:
+        return 0.0
+    return max(0.0, recent[-MAX_ATTEMPTS] + LOCKOUT_SECONDS - now)
+
+
+def _persisted_failures(now: float) -> list:
+    """Failed sign-in times from the audit log since the last successful sign-in."""
+    since = datetime.fromtimestamp(now - LOCKOUT_SECONDS, tz=timezone.utc)
+    failures = []
+    try:
+        for entry in audit.recent({"sign_in", "sign_in_failed"}, since):
+            if entry["action"] == "sign_in":
+                failures = []
+            else:
+                failures.append(entry["timestamp"].timestamp())
+    except Exception:
+        logger.exception("Could not read sign-in history from the audit log")
+    return failures
 
 
 def _configured_password() -> str:
@@ -153,6 +199,22 @@ def require_password() -> bool:
         )
         st.stop()
 
+    if password_required.strip().lower() in PLACEHOLDER_PASSWORDS:
+        st.title("AutoDefender Web Console")
+        st.error(
+            f"{PASSWORD_ENV} is still set to the example value from the docs. "
+            "Choose your own password and restart the console."
+        )
+        st.stop()
+
+    fingerprint = _password_fingerprint(password_required)
+    if st.session_state.authenticated and st.session_state.get("password_fingerprint") != fingerprint:
+        # The password changed since this session signed in
+        audit.record("console", "signed_out_password_changed")
+        st.session_state.clear()
+        st.session_state.authenticated = False
+        st.info("The console password changed. Sign in again.")
+
     if st.session_state.authenticated:
         now = time.time()
         last_seen = st.session_state.get("last_activity", now)
@@ -178,32 +240,40 @@ def require_password() -> bool:
 
     if submitted:
         guard = _login_guard()
+        # Check the lockout and the password in one locked step, so parallel
+        # attempts can't slip past the attempt limit
         with guard["lock"]:
-            remaining = guard["locked_until"] - time.time()
+            now = time.time()
+            remaining = max(
+                _lockout_remaining(guard["failures"], now),
+                _lockout_remaining(_persisted_failures(now), now),
+            )
             if remaining > 0:
-                st.error(f"Too many failed attempts. Try again in {int(remaining) + 1} seconds.")
-                return False
+                audit.record("console", "sign_in_blocked", {"seconds_left": int(remaining) + 1})
+            else:
+                # Compare fixed-length digests in constant time
+                supplied = hashlib.sha256(password_input.encode()).digest()
+                expected = hashlib.sha256(password_required.encode()).digest()
+                if hmac.compare_digest(supplied, expected):
+                    guard["failures"].clear()
+                    st.session_state.authenticated = True
+                    st.session_state.password_fingerprint = fingerprint
+                    st.session_state.last_activity = time.time()
+                    logger.info("Console sign-in succeeded")
+                    audit.record("console", "sign_in")
+                    st.rerun()
 
-            # Compare fixed-length digests in constant time
-            supplied = hashlib.sha256(password_input.encode()).digest()
-            expected = hashlib.sha256(password_required.encode()).digest()
-            if hmac.compare_digest(supplied, expected):
-                guard["failures"] = 0
-                st.session_state.authenticated = True
-                st.session_state.last_activity = time.time()
-                logger.info("Console sign-in succeeded")
-                audit.record("console", "sign_in")
-                st.rerun()
-
-            guard["failures"] += 1
-            logger.warning("Console sign-in failed (%s in a row)", guard["failures"])
-            audit.record("console", "sign_in_failed", {"failures_in_a_row": guard["failures"]})
-            if guard["failures"] >= MAX_ATTEMPTS:
-                guard["failures"] = 0
-                guard["locked_until"] = time.time() + LOCKOUT_SECONDS
-                logger.warning("Console sign-in locked for %s seconds", LOCKOUT_SECONDS)
-                audit.record("console", "sign_in_locked", {"seconds": LOCKOUT_SECONDS})
-        time.sleep(1)  # Slows down guessing
+                guard["failures"].append(now)
+                guard["failures"] = [t for t in guard["failures"] if now - t < LOCKOUT_SECONDS]
+                logger.warning("Console sign-in failed (%s recently)", len(guard["failures"]))
+                audit.record("console", "sign_in_failed", {"recent_failures": len(guard["failures"])})
+                if _lockout_remaining(guard["failures"], now) > 0:
+                    logger.warning("Console sign-in locked for up to %s seconds", LOCKOUT_SECONDS)
+                    audit.record("console", "sign_in_locked", {"seconds": LOCKOUT_SECONDS})
+        time.sleep(1)  # Slows down guessing (outside the lock)
+        if remaining > 0:
+            st.error(f"Too many failed attempts. Try again in {int(remaining) + 1} seconds.")
+            return False
         st.error("Password incorrect. Access denied.")
 
     return st.session_state.authenticated

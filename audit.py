@@ -19,7 +19,7 @@ import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,8 @@ def record(username: str, action: str, details: Optional[dict] = None) -> None:
     """Append an entry to the audit log. Never raises; failures are logged."""
     try:
         details_text = json.dumps(details or {}, sort_keys=True, default=str)[:4000]
-        timestamp = datetime.now(timezone.utc).isoformat()
+        # Fixed-width timestamps so text comparison matches time order
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="microseconds")
         with _lock:
             conn = _connect()
             try:
@@ -97,6 +98,24 @@ def entries(limit: int = 500) -> List[dict]:
         {"id": r[0], "timestamp": r[1], "username": r[2], "action": r[3], "details": r[4]}
         for r in rows
     ]
+
+
+def recent(actions: Iterable[str], since: datetime) -> List[dict]:
+    """Return entries with one of the given actions recorded at or after `since`, oldest first."""
+    actions = list(actions)
+    marks = ",".join("?" * len(actions))
+    with _lock:
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                # marks is only "?" placeholders; values are bound as parameters
+                f"SELECT timestamp, action FROM audit_log WHERE action IN ({marks}) "  # nosec B608
+                "AND timestamp >= ? ORDER BY id",
+                (*actions, since.astimezone(timezone.utc).isoformat(timespec="microseconds")),
+            ).fetchall()
+        finally:
+            conn.close()
+    return [{"timestamp": datetime.fromisoformat(r[0]), "action": r[1]} for r in rows]
 
 
 def verify() -> Tuple[bool, Optional[int]]:

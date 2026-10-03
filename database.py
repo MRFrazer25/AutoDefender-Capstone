@@ -234,6 +234,21 @@ class Database:
         return [self._row_to_action(row) for row in cursor.fetchall()]
     
     @_locked
+    def transition_action(self, action_id: int, from_status: str, to_status: str,
+                          executed_at: Optional[datetime] = None) -> bool:
+        """Change an action's status only if it is still `from_status`.
+
+        Returns True if this call made the change. Two browser tabs approving
+        the same action at once can't both act on it: only one wins.
+        """
+        cursor = self.conn.execute(
+            "UPDATE actions SET status = ?, executed_at = ? WHERE id = ? AND status = ?",
+            (to_status, executed_at.isoformat() if executed_at else None, action_id, from_status),
+        )
+        self.conn.commit()
+        return cursor.rowcount == 1
+
+    @_locked
     def update_action_status(self, action_id: int, status: str, executed_at: Optional[datetime] = None):
         """Update action status."""
         cursor = self.conn.cursor()
@@ -245,10 +260,10 @@ class Database:
     
     @_locked
     def update_action_description(self, action_id: int, description: str):
-        """Update action description (e.g., store AI-generated rule)."""
+        """Update a pending action's description (e.g., store the AI-generated rule)."""
         cursor = self.conn.cursor()
         cursor.execute("""
-            UPDATE actions SET description = ? WHERE id = ?
+            UPDATE actions SET description = ? WHERE id = ? AND status = 'RECOMMENDED'
         """, (description, action_id))
         self.conn.commit()
         logger.debug(f"Updated action {action_id} description")
