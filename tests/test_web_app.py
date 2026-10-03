@@ -60,24 +60,17 @@ def nav_pages(at):
     return list(at.sidebar.radio[0].options) if at.sidebar.radio else []
 
 
-def test_refuses_to_run_without_credentials(app_env, monkeypatch):
+def test_opens_without_a_password(app_env, monkeypatch):
     monkeypatch.delenv("AUTODEFENDER_UI_PASSWORD")
     at = new_app().run()
-    assert any("Refusing to run" in e.value for e in at.error)
+    assert not at.error and "Audit Log" in nav_pages(at)
+    assert not any(b.label == "Sign out" for b in at.sidebar.button)
 
 
 def test_short_shared_password_refused(app_env, monkeypatch):
     monkeypatch.setenv("AUTODEFENDER_UI_PASSWORD", "short")
     at = new_app().run()
     assert any("at least 12" in e.value for e in at.error)
-
-
-def test_dev_mode_on_localhost(app_env, monkeypatch):
-    monkeypatch.delenv("AUTODEFENDER_UI_PASSWORD")
-    monkeypatch.setenv("AUTODEFENDER_DEV", "1")
-    at = new_app().run()
-    assert not at.error and "Audit Log" in nav_pages(at)
-    assert not any(b.label == "Sign out" for b in at.sidebar.button)
 
 
 def test_shared_password_sign_in_and_idle_timeout(app_env):

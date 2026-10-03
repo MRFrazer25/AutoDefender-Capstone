@@ -159,7 +159,7 @@ The UI will open at `http://localhost:8501` and provides:
 
 **First steps:**
 1. Complete the Setup page before navigating elsewhere. Provide the Suricata log path, database path, and Ollama details.
-2. Set the `AUTODEFENDER_UI_PASSWORD` environment variable (at least 12 characters) before launching. The console refuses to start without it. On Streamlit Community Cloud, add it under **App settings -> Secrets** instead (see `.streamlit/secrets.toml.example`). For local development only, you can skip the password with `AUTODEFENDER_DEV=1` plus `--server.address localhost`. Failed sign-ins lock that client after 5 attempts in 5 minutes; a higher global backoff slows guessing without locking the operator out from another address.
+2. The console opens with no password, which is how the public Streamlit demo runs. To require sign-in, set `AUTODEFENDER_UI_PASSWORD` (at least 12 characters) before launching, or on Streamlit Community Cloud under **App settings -> Secrets** (see `.streamlit/secrets.toml.example`). Failed sign-ins lock that client after 5 attempts in 5 minutes; a higher global backoff slows guessing without locking the operator out from another address.
 3. After setup is marked complete, open the Dashboard and click **Start monitoring**. A background monitor tails each log file (handling log rotation), detects threats, and writes them to the database while the dashboard refreshes. Tick "Process existing entries" to analyze a whole uploaded log.
 4. Log paths may be inside the project folder or Suricata's default log folders (`/var/log/suricata`, `C:\Program Files\Suricata\log`). To use other folders (for example `/etc/suricata/rules` for the rules directory), list them in `AUTODEFENDER_ALLOWED_DIRS`, separated by `:` on Linux/macOS or `;` on Windows.
 
@@ -464,7 +464,7 @@ AutoDefender-Capstone/
 
 ## Security & Privacy
 
-- **Password Required**: The web console refuses to start without `AUTODEFENDER_UI_PASSWORD` (12+ characters, and not one of the example values from these docs). There are no user accounts or sign-up pages. The password is compared in constant time; more than 5 wrong attempts in 5 minutes lock that client (this survives restarts). A higher global backoff slows mass guessing without locking the operator out from another address. Changing the password signs out open sessions
+- **Optional password**: With no `AUTODEFENDER_UI_PASSWORD`, the web console is open (the public demo). Set one (12+ characters, and not one of the example values from these docs) to require sign-in. There are no user accounts or sign-up pages. The password is compared in constant time; more than 5 wrong attempts in 5 minutes lock that client (this survives restarts). A higher global backoff slows mass guessing without locking the operator out from another address. Changing the password signs out open sessions
 - **Audit Trail**: Security-relevant actions are recorded in a local, hash-chained, tamper-evident audit log
 - **Local Processing**: Analysis, AI explanations (Ollama), and GeoIP lookups all run locally. Nothing leaves your machine unless you configure a webhook
 - **Safe Rule Writing**: Only single-IP `drop` rules are written. AI-suggested rules must target the threat's own source IP; rules for `any`, loopback, or whitelisted IPs are refused, and SIDs are assigned by AutoDefender

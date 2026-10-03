@@ -7,7 +7,7 @@ SECTIONS = {
 ### Quick start guide
 
 1. **Install prerequisites**: Suricata, Ollama, and the Python dependencies (`pip install -r requirements.txt`).
-2. **Launch the web console**: set `AUTODEFENDER_UI_PASSWORD` (12+ characters), then run `streamlit run streamlit_app.py`.
+2. **Launch the web console**: `streamlit run streamlit_app.py`. It opens with no password. Set `AUTODEFENDER_UI_PASSWORD` (12+ characters) first if this copy should require sign-in.
 3. **Complete the Setup page**: log path(s), database path, and (optionally) your Ollama endpoint and model. Or click **Load demo configuration**.
 4. **Start monitoring**: on the Dashboard, click **Start monitoring**.
 5. **Investigate**: use Incidents and Threat Analysis, then approve or reject actions in Action Management.
@@ -101,7 +101,7 @@ SECTIONS = {
 ### Security best practices
 
 - Keep the console on localhost, or put it behind a reverse proxy with HTTPS if others need it.
-- Use a long, unique `AUTODEFENDER_UI_PASSWORD`. The console will not start without one.
+- For a console other people can reach, set a long, unique `AUTODEFENDER_UI_PASSWORD`. Leave it unset for an open demo.
   Lockout is per client (5 failures / 5 minutes); a global backoff slows mass guessing
   without locking the real operator out.
 - Review whitelists and blacklists regularly to avoid stale entries.

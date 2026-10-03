@@ -15,13 +15,13 @@ On Linux/macOS the databases and CLI exports are created readable by the current
 
 ## Who can do what
 
-- **Web console**: anyone who knows `AUTODEFENDER_UI_PASSWORD`. There are no user accounts or sign-up pages. The console listens on localhost only.
+- **Web console**: anyone who can open the page when no password is set (the public demo). When `AUTODEFENDER_UI_PASSWORD` is set, only someone who knows it. There are no user accounts or sign-up pages. A local install listens on localhost only.
 - **CLI**: anyone who can run commands on the machine (same trust as the files themselves).
 - **Log authors**: anyone who can send network traffic can influence log fields (signatures, IPs, HTTP data). Treated as untrusted input.
 
 ## Secrets it needs
 
-- `AUTODEFENDER_UI_PASSWORD` (environment variable or Streamlit secrets, never in the repo).
+- `AUTODEFENDER_UI_PASSWORD` (optional; environment variable or Streamlit secrets, never in the repo).
 - Optional webhook URL (Slack/Teams URLs are secrets; never logged).
 
 ## Outside services

@@ -321,7 +321,7 @@ def show() -> None:
         "- Verify the log file path and ensure the account running this console can read it.\n"
         "- Run Ollama locally or expose it on a secure internal network.\n"
         "- Keep this console behind a VPN or reverse proxy with authentication.\n"
-        "- The console requires the AUTODEFENDER_UI_PASSWORD environment variable (12+ characters)."
+        "- The console is open unless AUTODEFENDER_UI_PASSWORD is set (12+ characters)."
     )
 
     # Validate log paths if any are configured

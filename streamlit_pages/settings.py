@@ -248,7 +248,7 @@ alert_cooldown_seconds = 600
         )
     with st.expander("Environment variable reference"):
         st.markdown(
-            "- `AUTODEFENDER_UI_PASSWORD` (required for the web console)\n"
+            "- `AUTODEFENDER_UI_PASSWORD` (optional; unset means the console is open)\n"
             "- `AUTODEFENDER_ALLOWED_DIRS` (extra folders paths may point to)\n"
             "- `AUTODEFENDER_RETENTION_DAYS` (default retention for the purge button)\n"
             "- `AUTODEFENDER_GEOIP_CITY_DB`, `AUTODEFENDER_GEOIP_ASN_DB` (local GeoLite2 files for offline GeoIP)\n"

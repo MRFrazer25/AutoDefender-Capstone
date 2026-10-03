@@ -66,10 +66,8 @@ st.markdown(
 
 
 PASSWORD_ENV = "AUTODEFENDER_UI_PASSWORD"
-DEV_MODE_ENV = "AUTODEFENDER_DEV"
 MIN_PASSWORD_LENGTH = 12
 PBKDF2_ITERATIONS = 200_000
-LOCAL_ADDRESSES = {"localhost", "127.0.0.1", "::1"}
 # Sign the session out after this long without any interaction
 IDLE_TIMEOUT_SECONDS = 30 * 60
 # Example passwords from the docs; using one unchanged would be a known default credential
@@ -164,14 +162,6 @@ def _configured_password() -> str:
     return password
 
 
-def _dev_mode_allowed() -> bool:
-    """Allow running without a password only in dev mode on a localhost-only server."""
-    if os.getenv(DEV_MODE_ENV) != "1":
-        return False
-    address = (st.get_option("server.address") or "").strip().strip("[]")
-    return address in LOCAL_ADDRESSES
-
-
 def ensure_session_defaults() -> None:
     """Set up default session state values."""
     defaults = {
@@ -185,23 +175,15 @@ def ensure_session_defaults() -> None:
 
 
 def require_password() -> bool:
-    """Require the AUTODEFENDER_UI_PASSWORD before showing the console.
+    """Sign in when AUTODEFENDER_UI_PASSWORD is set. With none set, the console is open.
 
-    Fails closed: with no password configured the console refuses to run,
-    unless AUTODEFENDER_DEV=1 and the server only listens on localhost.
+    The public Streamlit demo leaves it unset. Set it for a local or shared deployment
+    that should not be open to everyone who can reach the page.
     """
     password_required = _configured_password()
     if not password_required:
-        if _dev_mode_allowed():
-            st.sidebar.warning("Dev mode: no password set. Localhost only.")
-            st.session_state.authenticated = True
-            return True
-        st.title("AutoDefender Web Console")
-        st.error(
-            f"Set {PASSWORD_ENV} before starting the console. "
-            "Refusing to run without a password."
-        )
-        st.stop()
+        st.session_state.authenticated = True
+        return True
 
     if len(password_required) < MIN_PASSWORD_LENGTH:
         st.title("AutoDefender Web Console")
