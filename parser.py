@@ -6,12 +6,22 @@ Handles malformed JSON gracefully.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Iterator
+from typing import Dict, Optional, Iterator
 from dateutil import parser as date_parser
 
 logger = logging.getLogger(__name__)
+
+# Longest log line we will parse; real eve.json events are far smaller
+MAX_EVENT_LENGTH = 1_000_000
+
+
+def to_utc(value: datetime) -> datetime:
+    """Return a timezone-aware UTC datetime (naive values are assumed to be UTC)."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 class SuricataParser:
@@ -32,8 +42,16 @@ class SuricataParser:
         Returns:
             Parsed event dictionary or None if parsing fails
         """
+        if len(event_str) > MAX_EVENT_LENGTH:
+            self.error_count += 1
+            logger.warning(f"Skipping oversized log line ({len(event_str)} characters)")
+            return None
         try:
             event = json.loads(event_str.strip())
+            if not isinstance(event, dict):
+                self.error_count += 1
+                logger.warning("Skipping log line that is not a JSON object")
+                return None
             self.processed_count += 1
             return event
         except json.JSONDecodeError as e:
@@ -62,7 +80,8 @@ class SuricataParser:
             'dest_ip': event.get('dest_ip'),
             'dest_port': event.get('dest_port'),
             'src_port': event.get('src_port'),
-            'protocol': event.get('protocol'),
+            # Suricata eve.json calls this field "proto"
+            'protocol': event.get('proto') or event.get('protocol'),
             'alert': event.get('alert', {}),
             'flow': event.get('flow', {}),
             'http': event.get('http', {}),
@@ -88,7 +107,7 @@ class SuricataParser:
         
         # If already a datetime object, return it
         if isinstance(timestamp_str, datetime):
-            return timestamp_str
+            return to_utc(timestamp_str)
         
         # If it's not a string, try to convert
         if not isinstance(timestamp_str, str):
@@ -99,8 +118,8 @@ class SuricataParser:
                 return None
         
         try:
-            return date_parser.parse(timestamp_str)
-        except (ValueError, TypeError) as e:
+            return to_utc(date_parser.parse(timestamp_str))
+        except (ValueError, TypeError, OverflowError) as e:
             logger.warning(f"Failed to parse timestamp {timestamp_str}: {e}")
             return None
     
@@ -137,43 +156,7 @@ class SuricataParser:
         except Exception as e:
             logger.error(f"Error reading file {file_path}: {e}")
     
-    def parse_files(self, file_paths: List[str]) -> Iterator[Dict]:
-        """
-        Parse multiple Suricata log files.
-        
-        Args:
-            file_paths: List of paths to Suricata log files
-            
-        Yields:
-            Extracted event dictionaries from all files
-        """
-        for file_path in file_paths:
-            logger.info(f"Parsing file: {file_path}")
-            for event in self.parse_file(file_path):
-                yield event
     
-    def parse_directory(self, directory_path: str, pattern: str = "*.json") -> Iterator[Dict]:
-        """
-        Parse all matching files in a directory.
-        
-        Args:
-            directory_path: Path to directory containing log files
-            pattern: File pattern to match (default: *.json)
-            
-        Yields:
-            Extracted event dictionaries from all matching files
-        """
-        path = Path(directory_path)
-        if not path.is_dir():
-            logger.error(f"Directory not found: {directory_path}")
-            return
-        
-        json_files = list(path.glob(pattern))
-        logger.info(f"Found {len(json_files)} files matching pattern {pattern}")
-        
-        for json_file in json_files:
-            for event in self.parse_file(str(json_file)):
-                yield event
     
     def get_stats(self) -> Dict:
         """Get parsing statistics."""

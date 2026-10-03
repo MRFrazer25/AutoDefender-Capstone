@@ -30,7 +30,7 @@ def show() -> None:
             ### Quick start guide
 
             1. **Install prerequisites**: Suricata, Ollama, and Python dependencies.
-            2. **Launch the web console**: `streamlit run streamlit_app.py`
+            2. **Launch the web console**: set `AUTODEFENDER_UI_PASSWORD`, then run `streamlit run streamlit_app.py`
             3. **Complete the Setup page**: Provide log path, database path, and Ollama details.
             4. **Start monitoring**: Use the Dashboard page once setup is complete.
             5. **Explore other pages**: Analyze threats, manage actions, and maintain IP lists.
@@ -45,7 +45,7 @@ def show() -> None:
             - **Metrics** show total threats and severity distribution.
             - **Charts** include severity distribution, timeline, and top source IPs.
             - **Recent threats** lists the most recent events with filtering and search.
-            - Use the log path input to start and stop real-time monitoring.
+            - Enter one or more log paths and click Start monitoring. Monitoring runs in the background and keeps going while you use other pages.
             - Enable auto-refresh to update the view every few seconds.
             """
         )
@@ -81,7 +81,7 @@ def show() -> None:
             ### IP management
 
             - **Whitelist** trusted IPs to ignore their activity.
-            - **Blacklist** known malicious IPs to flag them with higher priority.
+            - **Blacklist** known malicious IPs: their traffic raises HIGH alerts (it is not blocked automatically).
             - Import or export IP lists in bulk using the text-based tools.
             - Review IP statistics to identify frequent sources and destinations.
             - Quick actions allow moving IPs between lists directly from the analysis table.
@@ -133,9 +133,11 @@ def show() -> None:
             ### Security best practices
 
             - Run the web console behind authentication (VPN, reverse proxy, or password).
-            - Set the AUTODEFENDER_UI_PASSWORD environment variable for built-in access control.
+            - Set the AUTODEFENDER_UI_PASSWORD environment variable (12+ characters). The console will not start without it.
             - Keep database and rule directories backed up and access controlled.
             - Review whitelists and blacklists regularly to avoid stale entries.
+            - Check the Audit Log page now and then; it shows sign-ins, approvals, and unblocks, and warns if the log was altered.
+            - Use a block duration (Settings -> Suricata) so old blocks expire; IP addresses get reassigned over time.
             - Use dry-run mode and manual approvals for Suricata rule changes in production.
             - Monitor application logs and audit who approves or rejects actions.
             """

@@ -18,6 +18,7 @@ from database import Database
 from action_engine import ActionEngine
 from ai_explainer import AIExplainer
 from models import Threat, Action
+import audit
 from config import Config
 from suricata_manager import SuricataManager
 from utils.geoip import enrich_threat_context
@@ -40,6 +41,7 @@ class SuricataLogHandler(FileSystemEventHandler):
         self._resolved_path = self.file_path.resolve()
         self.last_position = 0
         self.start_from_beginning = start_from_beginning
+        self._read_lock = threading.Lock()
         self._initialize_position()
     
     def _initialize_position(self):
@@ -72,40 +74,46 @@ class SuricataLogHandler(FileSystemEventHandler):
             self.process_new_lines()
     
     def process_new_lines(self):
-        """Process new lines added to the log file."""
-        if not self.file_path.exists():
-            logger.warning(f"Log file does not exist: {self.file_path}")
-            return
+        """Process complete new lines added to the log file.
         
-        try:
-            current_size = self.file_path.stat().st_size
-            
-            # Check if file actually grew
-            if current_size <= self.last_position:
-                logger.debug(f"No new content (size: {current_size}, last_pos: {self.last_position})")
+        Handles log rotation/truncation (the file shrinking) by starting
+        over from the beginning, and leaves a partially written last line
+        for the next read so events are never cut in half.
+        """
+        # Watchdog events and the polling thread can both call this
+        with self._read_lock:
+            if not self.file_path.exists():
+                logger.warning(f"Log file does not exist: {self.file_path}")
                 return
             
-            with open(self.file_path, 'r', encoding='utf-8') as f:
-                # Seek to last known position
-                f.seek(self.last_position)
+            try:
+                current_size = self.file_path.stat().st_size
                 
-                # Read new lines
-                new_lines = f.readlines()
-                new_position = f.tell()
+                if current_size < self.last_position:
+                    logger.info(f"Log file {self.file_path} was rotated or truncated; reading from the start")
+                    self.last_position = 0
                 
-                logger.debug(f"Read {len(new_lines)} new lines from position {self.last_position} to {new_position}")
+                # Check if file actually grew
+                if current_size == self.last_position:
+                    return
                 
-                # Update position
-                self.last_position = new_position
+                with open(self.file_path, 'rb') as f:
+                    f.seek(self.last_position)
+                    data = f.read(current_size - self.last_position)
                 
-                # Process each new line
-                for line in new_lines:
-                    if line.strip():
-                        logger.debug(f"Processing line: {line.strip()[:100]}...")
-                        self.callback(line.strip())
-        
-        except Exception as e:
-            logger.error(f"Error reading new lines from {self.file_path}: {e}", exc_info=True)
+                # Only consume up to the last complete line
+                end = data.rfind(b'\n')
+                if end == -1:
+                    return
+                self.last_position += end + 1
+
+                for raw_line in data[:end].split(b'\n'):
+                    line = raw_line.decode('utf-8', errors='replace').strip()
+                    if line:
+                        self.callback(line)
+            
+            except Exception as e:
+                logger.error(f"Error reading new lines from {self.file_path}: {e}", exc_info=True)
 
 
 class RealTimeMonitor:
@@ -118,6 +126,7 @@ class RealTimeMonitor:
         ip_manager=None,
         read_from_start: bool = False,
         poll_interval: float = 1.0,
+        queue_suricata_approvals: bool = True,
     ):
         """
         Initialize the real-time monitor.
@@ -126,8 +135,13 @@ class RealTimeMonitor:
             log_path: Path to Suricata eve.json log file
             config: Configuration object
             ip_manager: Optional IPManager for whitelist/blacklist support
+            read_from_start: Process existing log entries instead of only new ones
+            poll_interval: Seconds between polls that back up file-change events
+            queue_suricata_approvals: Keep rules awaiting approval in memory for the
+                CLI prompt. The web console approves from the database instead.
         """
         self.log_path = Path(log_path)
+        self.queue_suricata_approvals = queue_suricata_approvals
         self.config = config or Config.get_default()
         self.read_from_start = read_from_start
         self._poll_interval = poll_interval
@@ -153,7 +167,7 @@ class RealTimeMonitor:
         self.suricata_manager: Optional[SuricataManager] = None
         if hasattr(self.config, 'SURICATA_ENABLED') and self.config.SURICATA_ENABLED:
             try:
-                self.suricata_manager = SuricataManager(self.config)
+                self.suricata_manager = SuricataManager(self.config, ip_manager=ip_manager)
                 logger.info("Suricata integration enabled")
             except Exception as e:
                 logger.warning(f"Failed to initialize Suricata manager: {e}")
@@ -241,7 +255,15 @@ class RealTimeMonitor:
         logger.debug(
             "Starting log file polling loop (interval: %ss)", self._poll_interval
         )
+        last_expiry_check = 0.0
         while self.running:
+            # Remove expired blocks about once a minute
+            if self.suricata_manager and time.monotonic() - last_expiry_check > 60:
+                last_expiry_check = time.monotonic()
+                try:
+                    self.suricata_manager.expire_blocks()
+                except Exception as expiry_error:
+                    logger.error("Error expiring blocks: %s", expiry_error)
             if self.event_handler:
                 try:
                     self.event_handler.process_new_lines()
@@ -293,13 +315,12 @@ class RealTimeMonitor:
         if "geo_context" in enriched:
             threat.metadata = threat.metadata or {}
             threat.metadata["geo_context"] = enriched["geo_context"]
-        
+
         # Store in database
         threat_id = self.database.add_threat(threat)
         threat.id = threat_id
-        
+
         # Generate AI explanation (in background thread to not block)
-        import threading
         thread = threading.Thread(target=self._generate_explanation_sync, args=(threat,))
         thread.daemon = True
         thread.start()
@@ -365,6 +386,7 @@ class RealTimeMonitor:
                         success = self.suricata_manager.add_custom_rule(rule_text)
                         if success:
                             logger.info(f"Auto-executed Suricata rule for threat {threat.id}")
+                            audit.record("system", "rule_auto_approved", {"threat_id": threat.id, "rule": rule_text})
                             # Update action status
                             for action in suricata_actions:
                                 if action.id:
@@ -374,7 +396,7 @@ class RealTimeMonitor:
                             for action in suricata_actions:
                                 if action.id:
                                     self.database.update_action_status(action.id, 'FAILED')
-                    else:
+                    elif self.queue_suricata_approvals:
                         # Queue for manual approval
                         with self._pending_lock:
                             for action in suricata_actions:
@@ -429,6 +451,7 @@ class RealTimeMonitor:
                     if not self.pending_suricata_actions:
                         self._pending_event.clear()
                 logger.info(f"Approved and executed Suricata action {action.id}")
+                audit.record("cli", "action_approved", {"action_id": action.id, "rule": rule})
                 return True
             else:
                 logger.error(f"Failed to execute Suricata action {action.id}")
@@ -468,6 +491,7 @@ class RealTimeMonitor:
                     self._pending_event.clear()
             
             logger.info(f"Rejected Suricata action {action.id}")
+            audit.record("cli", "action_rejected", {"action_id": action.id})
             return True
             
         except Exception as e:

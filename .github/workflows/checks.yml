@@ -1,0 +1,40 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only token: this workflow never writes to the repository
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are pinned to full commit SHAs so a moved tag can't change what runs
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies and scanners
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: No real IPs or organizations in demo data and docs
+        run: python tools/check_demo_data.py
+
+      - name: Tests
+        run: python -m pytest -q
+
+      - name: Security lint (bandit)
+        run: bandit -q -r . -x ./.venv,./venv,./tests --severity-level medium
+
+      - name: Known-vulnerable dependencies (pip-audit)
+        run: pip-audit -r requirements.txt

@@ -4,10 +4,41 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 
-from config import Config
+from action_engine import MANUAL_ACTIONS
 from database import Database
+from ip_manager import IPManager
 from notifications.webhook import send_webhook
-from suricata_manager import SuricataManager
+from streamlit_pages.session_config import (
+    config_from_session,
+    record,
+    webhook_url_from_session,
+)
+from suricata_manager import SuricataManager, build_drop_rule, normalize_block_ip, parse_drop_rule
+from mitre import techniques_for
+from utils.display import md_escape
+
+
+def _rule_for_action(action, threat):
+    """Return the drop rule to apply for an action, or None if there is no safe rule.
+
+    AI/fallback actions already hold a full rule. Playbook steps hold a plain
+    description, so build the rule from the threat's source IP instead.
+    """
+    if parse_drop_rule(action.description):
+        return action.description
+    if threat and normalize_block_ip(threat.source_ip):
+        return build_drop_rule(threat.source_ip, f"AutoDefender: {threat.description}")
+    return None
+
+
+def _apply_drop_rule(manager, action, threat, db) -> bool:
+    """Write the action's drop rule and record the result."""
+    rule = _rule_for_action(action, threat)
+    if rule and manager.add_custom_rule(rule):
+        db.update_action_status(action.id, "EXECUTED", datetime.now())
+        return True
+    db.update_action_status(action.id, "FAILED")
+    return False
 
 
 def _execute_additional_action(action, threat, db):
@@ -33,11 +64,18 @@ def _execute_additional_action(action, threat, db):
             geo = threat.metadata["geo_context"]
             payload["threat"]["location"] = geo.get("location", "Unknown")
             payload["threat"]["isp"] = geo.get("isp", "Unknown")
-        success = send_webhook(payload)
-        message = "Webhook notification sent." if success else "Webhook notification failed."
+        webhook_url = webhook_url_from_session()
+        if not webhook_url:
+            return False, "No webhook URL is configured. Add one on the Setup page."
+        success = send_webhook(payload, webhook_url)
+        message = "Webhook notification sent." if success else "Webhook notification failed. Check the server log."
     elif action.action_type == "LOG":
         success = True
         message = "Log action recorded."
+    elif action.action_type in MANUAL_ACTIONS:
+        # AutoDefender can't do these itself; record that the operator did
+        success = True
+        message = "Marked as done. Remember to apply this change in your firewall."
     else:
         success = True
         message = "Action marked as completed."
@@ -48,37 +86,84 @@ def _execute_additional_action(action, threat, db):
         now if success else None,
     )
     return success, message
-from utils.path_utils import sanitize_path
+
+
+def show_active_blocks(config) -> None:
+    """List the drop rules AutoDefender wrote, with unblock and reload controls."""
+    try:
+        manager = SuricataManager(config, ip_manager=IPManager())
+        expired = manager.expire_blocks()
+        blocks = manager.list_blocks()
+    except Exception as exc:
+        st.error(f"Could not read the rules directory: {exc}")
+        return
+    if expired:
+        record("blocks_expired", {"count": expired})
+
+    duration = "permanent" if not config.BLOCK_DURATION_HOURS else f"{config.BLOCK_DURATION_HOURS:g} hours"
+    with st.expander(f"Active blocks ({len(blocks)}), new blocks last: {duration}", expanded=False):
+        if not blocks:
+            st.caption("No drop rules are active.")
+        else:
+            st.dataframe(pd.DataFrame([
+                {
+                    "IP": b["ip"],
+                    "SID": b["sid"],
+                    "Reason": b["msg"],
+                    "Blocked at (UTC)": (b["created"] or "unknown")[:19],
+                    "Expires (UTC)": (b["expires"] or "never")[:19],
+                }
+                for b in blocks
+            ]), use_container_width=True)
+            unblock_col, button_col = st.columns([3, 1])
+            with unblock_col:
+                ip_to_unblock = st.selectbox("Unblock an IP", [b["ip"] for b in blocks], key="unblock_ip")
+            with button_col:
+                st.write("")
+                if st.button("Unblock", key="unblock_button"):
+                    if manager.unblock_ip(ip_to_unblock):
+                        record("ip_unblocked", {"ip": ip_to_unblock})
+                        st.success(f"Removed the drop rule for {ip_to_unblock}.")
+                        st.rerun()
+                    else:
+                        st.error("Could not remove the rule (dry-run mode leaves rules unchanged).")
+
+        if manager.needs_restart():
+            st.warning("Rules changed. Suricata needs to reload them before they take effect.")
+        if SuricataManager.suricatasc_available():
+            if st.button("Reload Suricata rules now", key="reload_rules"):
+                ok, message = manager.reload_rules()
+                record("rules_reloaded" if ok else "rules_reload_failed", {"message": message})
+                (st.success if ok else st.error)(message)
+        else:
+            st.caption("Install suricatasc (part of Suricata) to reload rules from here; "
+                       "otherwise restart Suricata after rule changes.")
 
 
 def show() -> None:
     """Display the action management page."""
     st.markdown('<div class="main-header">Action Management</div>', unsafe_allow_html=True)
 
-    config = Config.get_default()
     try:
-        db_path_value = st.session_state.get("db_path", config.db_path)
-        db_path = sanitize_path(db_path_value)
+        config = config_from_session()
     except ValueError as exc:
-        st.error(f"Invalid database path: {exc}")
+        st.error(f"Invalid path in current settings: {exc}")
         return
-    db = Database(db_path)
+    db = Database(config.db_path)
 
-    suricata_enabled = st.session_state.get("suricata_enabled", config.SURICATA_ENABLED)
-    config.SURICATA_ENABLED = suricata_enabled
-    try:
-        config.SURICATA_RULES_DIR = sanitize_path(st.session_state.get("suricata_rules_dir", config.SURICATA_RULES_DIR))
-    except ValueError:
-        st.error("Invalid Suricata rules directory configured.")
-        config.SURICATA_RULES_DIR = sanitize_path(config.SURICATA_RULES_DIR)
-    config.SURICATA_DRY_RUN = st.session_state.get(
-        "suricata_dry_run", config.SURICATA_DRY_RUN
-    )
-
+    suricata_enabled = config.SURICATA_ENABLED
     if not suricata_enabled:
         st.warning(
             "Suricata integration is disabled. Enable it in Settings or the Setup page to approve rules."
         )
+    elif config.SURICATA_DRY_RUN:
+        st.info("Dry-run mode is on: approved rules are logged but not written to the rules file.")
+    st.caption(
+        "BLOCK_IP, RATE_LIMIT, and TERMINATE are manual steps: AutoDefender records them, "
+        "you apply them in your firewall."
+    )
+    if suricata_enabled:
+        show_active_blocks(config)
 
     st.subheader("Filter actions")
     status_filter = st.multiselect(
@@ -122,31 +207,36 @@ def show() -> None:
             if not threat:
                 continue
 
-            header_text = f"Threat {threat_id}: {threat.description[:120]}"
+            header_text = f"Threat {threat_id}: {md_escape(threat.description[:120])}"
             with st.expander(header_text, expanded=threat_actions[0].status == "RECOMMENDED"):
                 detail_col1, detail_col2 = st.columns(2)
                 with detail_col1:
-                    st.markdown(f"**Severity:** `{threat.severity}`")
-                    st.markdown(f"**Source IP:** `{threat.source_ip or 'N/A'}`")
-                    st.markdown(f"**Event type:** `{threat.event_type}`")
+                    st.markdown(f"**Severity:** {md_escape(threat.severity)}")
+                    st.markdown(f"**Source IP:** {md_escape(threat.source_ip or 'N/A')}")
+                    st.markdown(f"**Event type:** {md_escape(threat.event_type)}")
                 with detail_col2:
-                    st.markdown(f"**Timestamp:** `{threat.timestamp}`")
-                    st.markdown(f"**Destination:** `{threat.dest_ip or 'N/A'}`")
+                    st.markdown(f"**Timestamp:** {md_escape(threat.timestamp)}")
+                    st.markdown(f"**Destination:** {md_escape(threat.dest_ip or 'N/A')}")
                     if threat.dest_port:
-                        st.markdown(f"**Port:** `{threat.dest_port}`")
+                        st.markdown(f"**Port:** {md_escape(threat.dest_port)}")
 
                 st.markdown("**Description:**")
-                st.info(threat.description)
+                st.info(md_escape(threat.description))
+                techniques = techniques_for(threat)
+                if techniques:
+                    st.markdown("**MITRE ATT&CK:** " + ", ".join(
+                        f"[{t['id']}]({t['url']}) {md_escape(t['name'])} ({md_escape(t['tactic'])})" for t in techniques
+                    ))
 
                 if threat.ai_explanation:
                     st.markdown("**AI analysis:**")
-                    st.success(threat.ai_explanation)
+                    st.success(md_escape(threat.ai_explanation))
 
                 st.markdown("### Actions for this threat")
                 for index, action in enumerate(threat_actions):
                     action_cols = st.columns([3, 1, 1])
                     with action_cols[0]:
-                        st.markdown(f"**{action.action_type}** (status: {action.status})")
+                        st.markdown(f"**{md_escape(action.action_type)}** (status: {md_escape(action.status)})")
                         st.text(action.description)
                         if action.executed_at:
                             st.caption(f"Executed at {action.executed_at}")
@@ -159,26 +249,31 @@ def show() -> None:
                                     key=f"approve_{action.id}_{index}",
                                 ):
                                     try:
-                                        manager = SuricataManager(config)
-                                        if manager.add_custom_rule(action.description):
-                                            db.update_action_status(
-                                                action.id,
-                                                "EXECUTED",
-                                                datetime.now(),
-                                            )
+                                        manager = SuricataManager(config, ip_manager=IPManager())
+                                        applied = _apply_drop_rule(manager, action, threat, db)
+                                        record("action_approved" if applied else "action_failed", {
+                                            "action_id": action.id, "type": action.action_type,
+                                            "source_ip": threat.source_ip, "dry_run": config.SURICATA_DRY_RUN,
+                                        })
+                                        if applied:
                                             st.success("Action approved and executed.")
                                             st.rerun()
                                         else:
-                                            db.update_action_status(action.id, "FAILED")
-                                            st.error("Failed to apply the Suricata rule.")
+                                            st.error(
+                                                "Failed to apply the Suricata rule. Only single-IP drop rules "
+                                                "for non-whitelisted IPs are accepted."
+                                            )
                                     except Exception as exc:
                                         st.error(f"Rule approval failed: {exc}")
                             else:
                                 if st.button(
-                                    "Execute",
+                                    "Mark done" if action.action_type in MANUAL_ACTIONS else "Execute",
                                     key=f"execute_{action.id}_{index}",
                                 ):
                                     success, message = _execute_additional_action(action, threat, db)
+                                    record("action_executed" if success else "action_failed", {
+                                        "action_id": action.id, "type": action.action_type,
+                                    })
                                     if success:
                                         st.success(message)
                                         st.rerun()
@@ -194,6 +289,7 @@ def show() -> None:
                                 key=f"reject_{action.id}_{index}",
                             ):
                                 db.update_action_status(action.id, "REJECTED")
+                                record("action_rejected", {"action_id": action.id, "type": action.action_type})
                                 st.info("Action rejected.")
                                 st.rerun()
                     elif action_cols[2]:
@@ -220,18 +316,14 @@ def show() -> None:
                     ]
                     if suricata_candidates:
                         try:
-                            manager = SuricataManager(config)
+                            manager = SuricataManager(config, ip_manager=IPManager())
                             approved = 0
                             for action in suricata_candidates:
-                                if manager.add_custom_rule(action.description):
-                                    db.update_action_status(
-                                        action.id,
-                                        "EXECUTED",
-                                        datetime.now(),
-                                    )
+                                if _apply_drop_rule(manager, action, db.get_threat(action.threat_id), db):
                                     approved += 1
-                                else:
-                                    db.update_action_status(action.id, "FAILED")
+                            record("actions_batch_approved", {
+                                "approved": approved, "requested": len(suricata_candidates),
+                            })
                             st.success(
                                 f"Approved {approved} of {len(suricata_candidates)} Suricata actions."
                             )
@@ -245,6 +337,7 @@ def show() -> None:
                 if st.button("Reject all recommended actions"):
                     for action in recommended_actions:
                         db.update_action_status(action.id, "REJECTED")
+                    record("actions_batch_rejected", {"count": len(recommended_actions)})
                     st.info(f"Rejected {len(recommended_actions)} actions.")
                     st.rerun()
     else:

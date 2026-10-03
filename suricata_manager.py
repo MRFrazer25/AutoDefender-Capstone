@@ -3,36 +3,97 @@
 Operations:
 - Add drop rules to custom rule files
 - Auto-backup before modifications
-- Rule validation
+- Strict single-IP drop rule validation
 - Path validation for safety
 - Dry-run mode
 - Health monitoring
 """
 
+import ipaddress
+import json
 import logging
 import shutil
 import re
 import os
+import subprocess  # nosec B404 - only runs suricatasc with fixed arguments
+import threading
 from pathlib import Path
-from datetime import datetime
-from typing import Optional, Dict, Any
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict, Any, Tuple
 from config import Config
 
 logger = logging.getLogger(__name__)
+
+# The only rule shape AutoDefender writes: drop all traffic from one source IP.
+DROP_RULE_PATTERN = re.compile(
+    r'^drop ip (?P<src>\S+) any -> any any '
+    r'\(msg:"(?P<msg>[^"\\;\r\n]{1,200})"; sid:\d+; rev:\d+;\)$'
+)
+
+MSG_MAX_LENGTH = 150
+
+
+def sanitize_rule_msg(text: str) -> str:
+    """Make free text safe for a Suricata msg field (one line, no quotes or separators)."""
+    cleaned = re.sub(r'[\x00-\x1f\x7f"\\;]', " ", text or "")
+    cleaned = " ".join(cleaned.split())
+    return cleaned[:MSG_MAX_LENGTH] or "AutoDefender block"
+
+
+def normalize_block_ip(ip: Optional[str]) -> Optional[str]:
+    """Return the canonical form of an IP that is safe to block, or None.
+
+    Rejects anything that is not a single address, plus addresses whose
+    blocking would cut off this host or everything (loopback, unspecified,
+    multicast).
+    """
+    if not ip:
+        return None
+    try:
+        addr = ipaddress.ip_address(str(ip).strip())
+    except ValueError:
+        return None
+    if addr.is_loopback or addr.is_unspecified or addr.is_multicast:
+        return None
+    return str(addr)
+
+
+def build_drop_rule(ip: str, msg: str, sid: int = 9000001) -> str:
+    """Build a single-line drop rule for one source IP."""
+    safe_ip = normalize_block_ip(ip)
+    if not safe_ip:
+        raise ValueError(f"Refusing to build a drop rule for {ip!r}")
+    return f'drop ip {safe_ip} any -> any any (msg:"{sanitize_rule_msg(msg)}"; sid:{int(sid)}; rev:1;)'
+
+
+def parse_drop_rule(rule: str) -> Optional[Tuple[str, str]]:
+    """Return (ip, msg) if the rule matches the exact AutoDefender drop rule shape."""
+    if not rule or "\n" in rule.strip() or "\r" in rule:
+        return None
+    match = DROP_RULE_PATTERN.match(rule.strip())
+    if not match:
+        return None
+    ip = normalize_block_ip(match["src"])
+    if not ip:
+        return None
+    return ip, match["msg"]
 
 
 class SuricataManager:
     """Manages Suricata rule files and configuration."""
     
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[Config] = None, ip_manager=None):
         """
         Initialize Suricata manager.
-        
+
         Args:
             config: Configuration object
+            ip_manager: Optional IPManager; whitelisted IPs are never blocked
         """
         self.config = config or Config.get_default()
-        
+        self.ip_manager = ip_manager
+        self._write_lock = threading.Lock()
+
         # Ensure Suricata is enabled
         if not hasattr(self.config, 'SURICATA_ENABLED') or not self.config.SURICATA_ENABLED:
             logger.info("Suricata integration is disabled")
@@ -41,7 +102,6 @@ class SuricataManager:
         # Set up paths
         self.rules_dir = Path(getattr(self.config, 'SURICATA_RULES_DIR', './suricata_rules'))
         self.custom_rules_file = self.rules_dir / "autodefender_custom.rules"
-        self.config_path = Path(getattr(self.config, 'SURICATA_CONFIG_PATH', ''))
         
         # Create rules directory if it doesn't exist
         self._initialize_rules_directory()
@@ -117,54 +177,6 @@ class SuricataManager:
             logger.error(f"Error checking path safety: {e}")
             return False
     
-    def validate_rule(self, rule: str) -> bool:
-        """
-        Validate Suricata rule syntax.
-        
-        Args:
-            rule: Rule string to validate
-            
-        Returns:
-            True if valid, False otherwise
-        """
-        # Basic validation - check for required components
-        rule = rule.strip()
-        
-        if not rule:
-            return False
-        
-        # Must start with action (drop, alert, pass, reject)
-        valid_actions = ['drop', 'alert', 'pass', 'reject']
-        if not any(rule.startswith(action) for action in valid_actions):
-            logger.warning(f"Rule doesn't start with valid action: {rule[:50]}")
-            return False
-        
-        # Must contain protocol (ip, tcp, udp, icmp, etc.)
-        if not any(proto in rule.lower() for proto in ['ip', 'tcp', 'udp', 'icmp', 'http']):
-            logger.warning(f"Rule doesn't contain valid protocol: {rule[:50]}")
-            return False
-        
-        # Must contain source and destination (-> or <>)
-        if '->' not in rule and '<>' not in rule:
-            logger.warning(f"Rule doesn't contain direction operator: {rule[:50]}")
-            return False
-        
-        # Must have parentheses for options
-        if '(' not in rule or ')' not in rule:
-            logger.warning(f"Rule doesn't contain options in parentheses: {rule[:50]}")
-            return False
-        
-        # Must have msg and sid
-        if 'msg:' not in rule.lower():
-            logger.warning(f"Rule doesn't contain msg: {rule[:50]}")
-            return False
-        
-        if 'sid:' not in rule.lower():
-            logger.warning(f"Rule doesn't contain sid: {rule[:50]}")
-            return False
-        
-        return True
-    
     def backup_rules_file(self) -> Optional[Path]:
         """
         Create a timestamped backup of the rules file.
@@ -202,45 +214,197 @@ class SuricataManager:
             logger.warning("Suricata integration is disabled")
             return False
         
-        # Validate rule
-        if not self.validate_rule(rule):
-            logger.error(f"Invalid rule: {rule[:100]}")
+        # Only accept the exact single-IP drop rule shape; anything else
+        # (extra rules on new lines, "any" sources, pass rules) is refused.
+        parsed = parse_drop_rule(rule)
+        if not parsed:
+            logger.error(f"Refusing rule that is not a single-IP drop rule: {rule[:100]!r}")
             return False
-        
+        ip, msg = parsed
+
+        if self.ip_manager and self.ip_manager.is_whitelisted(ip):
+            logger.error(f"Refusing to block whitelisted IP {ip}")
+            return False
+
         # Validate path safety
         if not self.is_safe_path(self.custom_rules_file):
             logger.error(f"Unsafe path: {self.custom_rules_file}")
             return False
-        
-        # Check dry-run mode
-        if hasattr(self.config, 'SURICATA_DRY_RUN') and self.config.SURICATA_DRY_RUN:
-            logger.info(f"[DRY RUN] Would add rule: {rule.strip()}")
-            return True
-        
+
+        with self._write_lock:
+            # One rule per IP: approving the same block twice is a no-op
+            existing = self.find_block(ip)
+            if existing:
+                logger.info(f"{ip} is already blocked (sid {existing['sid']})")
+                return True
+
+            # Rebuild the rule ourselves so the SID is unique and the text is canonical
+            sid = self.next_sid
+            final_rule = build_drop_rule(ip, msg, sid)
+
+            # Check dry-run mode
+            if hasattr(self.config, 'SURICATA_DRY_RUN') and self.config.SURICATA_DRY_RUN:
+                logger.info(f"[DRY RUN] Would add rule: {final_rule}")
+                return True
+
+            try:
+                # Create backup first, keeping only the most recent ones
+                self.backup_rules_file()
+                self.cleanup_old_backups()
+
+                with open(self.custom_rules_file, 'a', encoding='utf-8') as f:
+                    f.write(final_rule + '\n')
+
+                self.next_sid += 1
+                hours = float(getattr(self.config, 'BLOCK_DURATION_HOURS', 0) or 0)
+                now = datetime.now(timezone.utc)
+                blocks = self._load_blocks()
+                blocks[str(sid)] = {
+                    "ip": ip,
+                    "created": now.isoformat(),
+                    "expires": (now + timedelta(hours=hours)).isoformat() if hours > 0 else None,
+                }
+                self._save_blocks(blocks)
+                logger.info(f"Added custom Suricata rule blocking {ip}")
+                self._rules_modified_since_check = True
+            except Exception as e:
+                logger.error(f"Error adding custom rule: {e}")
+                return False
+
+        self._maybe_reload()
+        return True
+
+    # ---- Active blocks, unblocking, and expiry ----
+
+    @property
+    def blocks_file(self) -> Path:
+        """Sidecar file recording when each AutoDefender rule was added and when it expires."""
+        return self.rules_dir / "autodefender_blocks.json"
+
+    def _load_blocks(self) -> Dict[str, dict]:
         try:
-            # Create backup first
+            data = json.loads(self.blocks_file.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    def _save_blocks(self, blocks: Dict[str, dict]):
+        temp = self.blocks_file.with_suffix(".json.tmp")
+        temp.write_text(json.dumps(blocks, indent=2), encoding="utf-8")
+        os.replace(temp, self.blocks_file)
+
+    def list_blocks(self) -> list:
+        """Return the drop rules AutoDefender wrote, oldest first.
+
+        Each entry has sid, ip, msg, created, and expires (None = permanent).
+        Rules added before block tracking existed show created/expires as None.
+        """
+        if not hasattr(self, 'custom_rules_file') or not self.custom_rules_file.exists():
+            return []
+        blocks = self._load_blocks()
+        result = []
+        for line in self.custom_rules_file.read_text(encoding="utf-8").splitlines():
+            parsed = parse_drop_rule(line)
+            sid_match = re.search(r'sid:(\d+);', line)
+            if not parsed or not sid_match:
+                continue
+            info = blocks.get(sid_match.group(1), {})
+            result.append({
+                "sid": int(sid_match.group(1)),
+                "ip": parsed[0],
+                "msg": parsed[1],
+                "created": info.get("created"),
+                "expires": info.get("expires"),
+            })
+        return result
+
+    def find_block(self, ip: str) -> Optional[dict]:
+        """Return the active block for an IP, if any."""
+        ip = normalize_block_ip(ip)
+        return next((b for b in self.list_blocks() if b["ip"] == ip), None)
+
+    def remove_blocks(self, sids) -> int:
+        """Remove AutoDefender drop rules by SID. Returns how many rules were removed."""
+        sids = {int(s) for s in sids}
+        if not sids or not hasattr(self, 'custom_rules_file'):
+            return 0
+        with self._write_lock:
+            if getattr(self.config, 'SURICATA_DRY_RUN', False):
+                logger.info(f"[DRY RUN] Would remove rules with SIDs {sorted(sids)}")
+                return 0
+            lines = self.custom_rules_file.read_text(encoding="utf-8").splitlines()
+            kept, removed = [], 0
+            for line in lines:
+                sid_match = re.search(r'sid:(\d+);', line)
+                # Only ever remove rules in AutoDefender's own canonical format
+                if parse_drop_rule(line) and sid_match and int(sid_match.group(1)) in sids:
+                    removed += 1
+                    continue
+                kept.append(line)
+            if not removed:
+                return 0
             self.backup_rules_file()
-            
-            # Ensure rule ends with newline
-            if not rule.endswith('\n'):
-                rule += '\n'
-            
-            # Append rule to file
-            with open(self.custom_rules_file, 'a', encoding='utf-8') as f:
-                f.write(rule)
-            
-            logger.info("Added custom Suricata rule")
+            self.cleanup_old_backups()
+            temp = self.custom_rules_file.with_suffix(".rules.tmp")
+            temp.write_text("".join(line + "\n" for line in kept), encoding="utf-8")
+            os.replace(temp, self.custom_rules_file)
+            blocks = self._load_blocks()
+            for sid in sids:
+                blocks.pop(str(sid), None)
+            self._save_blocks(blocks)
             self._rules_modified_since_check = True
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error adding custom rule: {e}")
-            return False
-    
-    def get_rules_file_path(self) -> Path:
-        """Get path to custom rules file."""
-        return self.custom_rules_file
-    
+            logger.info(f"Removed {removed} drop rule(s)")
+        self._maybe_reload()
+        return removed
+
+    def unblock_ip(self, ip: str) -> bool:
+        """Remove the drop rule for an IP. Returns True if a rule was removed."""
+        block = self.find_block(ip)
+        return bool(block) and self.remove_blocks([block["sid"]]) > 0
+
+    def expire_blocks(self, now: Optional[datetime] = None) -> int:
+        """Remove blocks whose expiry time has passed. Returns how many were removed."""
+        now = now or datetime.now(timezone.utc)
+        expired = [
+            b["sid"] for b in self.list_blocks()
+            if b["expires"] and datetime.fromisoformat(b["expires"]) <= now
+        ]
+        if expired:
+            logger.info(f"Expiring {len(expired)} block(s)")
+        return self.remove_blocks(expired) if expired else 0
+
+    # ---- Reloading Suricata ----
+
+    @staticmethod
+    def suricatasc_available() -> bool:
+        """True if the suricatasc tool is installed on this machine."""
+        return shutil.which("suricatasc") is not None
+
+    def reload_rules(self) -> Tuple[bool, str]:
+        """Ask the running Suricata to reload its rules via suricatasc (no restart needed)."""
+        tool = shutil.which("suricatasc")
+        if not tool:
+            return False, "suricatasc is not installed or not on PATH."
+        command = [tool, "-c", "reload-rules"]
+        socket_path = getattr(self.config, 'SURICATA_SOCKET', '')
+        if socket_path:
+            command.append(socket_path)
+        try:
+            # Fixed argument list, no shell
+            result = subprocess.run(command, capture_output=True, text=True, timeout=60)  # nosec B603
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return False, f"Could not run suricatasc: {e}"
+        output = (result.stdout + result.stderr).strip()
+        if result.returncode == 0 and '"OK"' in output.replace("'", '"'):
+            self._rules_modified_since_check = False
+            return True, "Suricata reloaded its rules."
+        return False, f"Suricata did not confirm the reload: {output[:300]}"
+
+    def _maybe_reload(self):
+        if getattr(self.config, 'SURICATA_AUTO_RELOAD', False):
+            ok, message = self.reload_rules()
+            (logger.info if ok else logger.warning)(message)
+
     def cleanup_old_backups(self, keep_count: int = 10) -> int:
         """
         Clean up old backup files, keeping only the most recent ones.

@@ -207,10 +207,10 @@ When `AUTO_APPROVE_SURICATA` is disabled (default), threats that qualify for Sur
 +-------------------------------------------------------------------+
 | Action Type: SURICATA_DROP_RULE                                   |
 | Proposed Rule:                                                     |
-| drop tcp any any -> 192.168.1.100 22 (msg:"AutoDefender:          |
-| Block SSH brute force from 10.0.0.50"; sid:1000001; rev:1;)       |
+| drop ip 203.0.113.45 any -> any any (msg:"AutoDefender: SSH       |
+| brute force"; sid:9000001; rev:1;)                                |
 |                                                                    |
-| Threat: SSH Root Login Attempt from 10.0.0.50                     |
+| Threat: SSH Root Login Attempt from 203.0.113.45                  |
 |                                                                    |
 | Requested at: 2025-11-14 10:30:15                                 |
 +-------------------------------------------------------------------+
@@ -260,17 +260,19 @@ Approve this action? [y/N]:
 
 AutoDefender creates and manages a custom rules file:
 - **Location**: `./suricata_rules/autodefender_custom.rules` (configurable)
-- **SID Range**: Auto-generated starting from 1000001
-- **Format**: Standard Suricata rule syntax
-- **Backups**: Timestamped backups created before each modification
+- **SID Range**: Assigned by AutoDefender starting at 9000001 (the AI's suggested SID is ignored)
+- **Format**: Only single-source-IP drop rules: `drop ip <ip> any -> any any (msg:"..."; sid:N; rev:1;)`
+- **Refused**: rules for `any`, ranges, loopback/unspecified/multicast, or whitelisted IPs, and anything with extra options or more than one line
+- **Backups**: Timestamped backups created before each modification; the 10 most recent are kept
+- **Enforcement**: Drop rules only block traffic when Suricata runs inline (IPS mode); in IDS mode they only alert
 
 **Example Rules File:**
 ```
 # AutoDefender Custom Rules
 # Generated: 2025-11-14 10:30:15
 
-drop tcp any any -> 192.168.1.100 22 (msg:"AutoDefender: Block SSH brute force from 10.0.0.50"; sid:1000001; rev:1;)
-drop tcp 10.0.0.50 any -> any any (msg:"AutoDefender: Block malicious source 10.0.0.50"; sid:1000002; rev:1;)
+drop ip 203.0.113.45 any -> any any (msg:"AutoDefender: Suricata Alert: ET SCAN Potential SSH Scan"; sid:9000001; rev:1;)
+drop ip 10.0.0.50 any -> any any (msg:"AutoDefender: Port scan detected from 10.0.0.50"; sid:9000002; rev:1;)
 ```
 
 ### Database Schema
@@ -280,7 +282,7 @@ Actions are stored in the `actions` table:
 - `threat_id`: Associated threat ID
 - `action_type`: Action type (e.g., `SURICATA_DROP_RULE`)
 - `description`: Full rule or action description
-- `status`: `RECOMMENDED`, `APPROVED`, `EXECUTED`, `REJECTED`
+- `status`: `RECOMMENDED`, `EXECUTED`, `REJECTED`, `FAILED`
 - `timestamp`: When the action was created
 - `executed_at`: When the action was executed (if approved)
 
@@ -334,8 +336,8 @@ cd "C:\Program Files\Suricata"
 ### Performance issues
 
 - Reduce AI analysis scope with `--ai-severities` flag
-- Use auto-approval for non-critical environments
-- Increase monitoring interval in `monitor.py`
+- Raise the repeat alert cooldown (Settings -> Detection) so noisy sources create fewer threats
+- Use auto-approval only in non-critical environments
 
 ---
 

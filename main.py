@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 
 from config import Config
@@ -27,11 +28,10 @@ from monitor import RealTimeMonitor
 from analyzer import HistoricalAnalyzer
 from database import Database
 from filter import ThreatFilter
-from exporter import Exporter
-from ip_manager import IPManager
+from exporter import write_export
+from ip_manager import IPManager, normalize_ip
 from approval_handler import ApprovalHandler
 from ui.dashboard import Dashboard
-from utils.path_utils import sanitize_path
 
 # Configure logging (can be overridden via --debug flag)
 logging.basicConfig(
@@ -114,7 +114,7 @@ def monitor_mode(config: Config, log_path: str, ip_manager: Optional[IPManager] 
     # Callback for when threats are detected
     def on_threat_detected(threat, _actions):
         """Called when a threat is detected."""
-        console.print(f"[red][!] Threat detected:[/red] {threat.description}")
+        console.print(f"[red][!] Threat detected:[/red] {escape(threat.description)}")
     
     monitor.set_threat_callback(on_threat_detected)
     
@@ -288,7 +288,7 @@ def analyze_mode(config: Config, file_paths: list,
     
     if search_query:
         filtered_threats = threat_filter.search_threats(filtered_threats, search_query)
-        console.print(f"[cyan]Search results for '{search_query}': {len(filtered_threats)} threats[/cyan]")
+        console.print(f"[cyan]Search results for '{escape(search_query)}': {len(filtered_threats)} threats[/cyan]")
     
     # Generate AI explanations for selected threats
     if ai_severities:
@@ -324,7 +324,7 @@ def analyze_mode(config: Config, file_paths: list,
     summary = analyzer.get_summary()
     
     console.print()
-    console.print(Panel(summary, title="[bold]Analysis Report[/bold]", border_style="green"))
+    console.print(Panel(escape(summary), title="[bold]Analysis Report[/bold]", border_style="green"))
     
     # Export if requested
     if export_path:
@@ -335,17 +335,8 @@ def analyze_mode(config: Config, file_paths: list,
             if not filename.endswith(('.csv', '.json')):
                 filename = f"{sanitize_filename(filename)}.{export_format.lower()}"
             
-            exporter = Exporter(analyzer.database)
-            if export_format.lower() == 'csv':
-                success = exporter.export_threats_csv(filtered_threats, filename)
-            else:
-                success = exporter.export_threats_json(filtered_threats, filename)
-            
-            if success:
-                console.print(f"[green][OK][/green] Exported {len(filtered_threats)} threats to exports/{filename}")
-            else:
-                console.print("[red][X][/red] Failed to export threats")
-                console.print("[yellow]Hint:[/yellow] Check file permissions and disk space")
+            written = write_export(filtered_threats, filename, export_format)
+            console.print(f"[green][OK][/green] Exported {len(filtered_threats)} threats to {escape(written)}")
         except ValueError as e:
             console.print(f"[red]Error:[/red] Invalid export path: {e}")
             console.print("[yellow]Hint:[/yellow] Path contains invalid characters or traversal sequences")
@@ -475,7 +466,7 @@ Examples:
         '--blacklist',
         type=str,
         metavar='IP',
-        help='Add IP address to blacklist (threats from this IP will be auto-blocked)'
+        help='Add IP address to blacklist (traffic from this IP raises a HIGH alert; it is not blocked automatically)'
     )
     
     parser.add_argument(
@@ -557,27 +548,32 @@ Examples:
     
     # Handle IP list management commands first
     ip_manager = IPManager()
+    for ip_arg in (args.whitelist, args.blacklist, args.remove_whitelist, args.remove_blacklist):
+        if ip_arg and not normalize_ip(ip_arg):
+            console.print(f"[red]Error:[/red] Not a valid IP address: {escape(ip_arg)}")
+            sys.exit(1)
+
     if args.whitelist:
         if ip_manager.add_whitelist(args.whitelist):
             console.print(f"[green][OK][/green] Added {args.whitelist} to whitelist")
         else:
             console.print(f"[yellow][!][/yellow] {args.whitelist} is already whitelisted")
         sys.exit(0)
-    
+
     if args.blacklist:
         if ip_manager.add_blacklist(args.blacklist):
             console.print(f"[green][OK][/green] Added {args.blacklist} to blacklist")
         else:
             console.print(f"[yellow][!][/yellow] {args.blacklist} is already blacklisted")
         sys.exit(0)
-    
+
     if args.remove_whitelist:
         if ip_manager.remove_whitelist(args.remove_whitelist):
             console.print(f"[green][OK][/green] Removed {args.remove_whitelist} from whitelist")
         else:
             console.print(f"[red][X][/red] {args.remove_whitelist} not found in whitelist")
         sys.exit(0)
-    
+
     if args.remove_blacklist:
         if ip_manager.remove_blacklist(args.remove_blacklist):
             console.print(f"[green][OK][/green] Removed {args.remove_blacklist} from blacklist")

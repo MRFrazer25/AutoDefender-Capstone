@@ -1,0 +1,24 @@
+.git
+.github
+.vscode
+.cursor
+.devcontainer
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+tests/
+
+# Local data and secrets never go into the image
+.env
+.streamlit/secrets.toml
+*.mmdb
+*.db
+!demo/demo_config.db
+exports/
+backups/
+uploads/
+demo/generated/
+demo/outputs/
+suricata_rules/*.backup.*
+suricata_rules/autodefender_blocks.json

@@ -4,13 +4,22 @@ An AI-powered security tool that monitors Suricata network logs in real-time and
 
 **Try it online**: [https://autodefenderhackathon.streamlit.app/](https://autodefenderhackathon.streamlit.app/)
 
+## About This Project
+
+AutoDefender started as my senior year college capstone project in fall 2025. I still maintain it and update it from time to time with security fixes, more realistic detection, and new features.
+
 ## Features
 
 - **Real-time Monitoring**: Watches Suricata `eve.json` log files and processes events as they occur
 - **Multi-Source Aggregation**: Monitor multiple Suricata instances or log sources simultaneously
 - **Historical Analysis**: Batch processes existing Suricata log files for threat detection
 - **AI-Powered Detection**: Uses Ollama to analyze threats and provide plain English explanations
-- **GeoIP Enrichment**: Automatic geographic context for external IPs (location, ISP, AS number)
+- **GeoIP Enrichment**: Optional offline geographic context for external IPs from local MaxMind GeoLite2 files (nothing is sent to a third party)
+- **MITRE ATT&CK Mapping**: Threats are tagged with ATT&CK techniques (e.g. T1046 Network Service Discovery, T1110 Brute Force) in the UI, exports, and AI prompts
+- **Incidents**: Related threats from the same source are grouped into incidents with a timeline
+- **Audit Log**: A local, tamper-evident record of sign-ins, approvals, unblocks, and settings changes
+- **Block Management**: See active blocks, unblock IPs, set an optional block duration, and reload Suricata rules without a restart
+- **Docker**: One command starts AutoDefender, Ollama, and a demo log feed
 - **Threat Detection**: Identifies port scans, unusual traffic patterns, and suspicious activity
 - **Action Recommendations**: Suggests security actions based on threat severity
 - **Dual Interface**: Choose between Terminal UI (Rich-based TUI) or Web UI (Streamlit)
@@ -20,19 +29,33 @@ An AI-powered security tool that monitors Suricata network logs in real-time and
 - **Threat Filtering**: Filter threats by severity, type, IP address, or date range
 - **Search Functionality**: Search threats by description, IP, or event type
 - **Export Capabilities**: Export threats and statistics to CSV or JSON format
-- **IP Management**: Whitelist trusted IPs and blacklist known malicious IPs
+- **IP Management**: Whitelist trusted IPs (ignored by detection) and blacklist known malicious IPs (their traffic raises HIGH alerts)
 - **Configurable AI Analysis**: Choose which threat severities to analyze with AI
 - **Agentic Suricata Integration**: AI-driven automatic Suricata rule generation with permission prompts and safety controls
 - **Action Playbooks**: Group multiple response steps (rule + log + webhook) into single approval prompts
 - **Webhook Notifications**: Optional Slack/Teams integration for approved threats (opt-in, privacy-first)
 - **Interactive Approvals**: Real-time CLI prompts for reviewing and approving AI-generated rules
 
+## Running with Docker
+
+The quickest way to try everything (AutoDefender, a local Ollama, and a replayer that feeds the sample Suricata log):
+
+```bash
+cp .env.example .env        # then set AUTODEFENDER_UI_PASSWORD in .env
+docker compose up -d --build
+docker compose exec ollama ollama pull phi4-mini
+```
+
+Open http://localhost:8501, sign in, and start monitoring `/var/log/suricata/eve.json` on the Dashboard. Data (database, audit log, rules) is kept in the `autodefender-data` volume. The console is published on `127.0.0.1` only and Ollama is not exposed at all.
+
+To watch a real Suricata on a Linux host, remove the `replayer` service and mount the host's log folder read-only on the `autodefender` service: `- /var/log/suricata:/var/log/suricata:ro`. (Docker Desktop on Windows/macOS can't capture host network traffic, so run Suricata itself outside Docker there.)
+
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd AutoDefender_Hackathon
+git clone https://github.com/MRFrazer25/AutoDefender-Capstone.git
+cd AutoDefender-Capstone
 ```
 
 2. Install dependencies:
@@ -79,13 +102,16 @@ The demo database (`demo/demo_config.db`) is pre-populated and included in the r
 
 4. **Clone AutoDefender and install Python requirements**
    ```bash
-   git clone <repository-url>
-   cd AutoDefender_Hackathon
+   git clone https://github.com/MRFrazer25/AutoDefender-Capstone.git
+   cd AutoDefender-Capstone
    pip install -r requirements.txt
    ```
 
 5. **Choose how you want to run AutoDefender**
    - **Streamlit UI (recommended for most people)**:  
+     Set a console password (12+ characters) first, then start the UI:  
+     PowerShell: `$env:AUTODEFENDER_UI_PASSWORD = "choose-a-long-password"`  
+     macOS/Linux: `export AUTODEFENDER_UI_PASSWORD="choose-a-long-password"`  
      `python -m streamlit run streamlit_app.py`
      1. The browser opens at `http://localhost:8501`
      2. Go to the **Setup** page and fill in:
@@ -98,7 +124,7 @@ The demo database (`demo/demo_config.db`) is pre-populated and included in the r
      3. Click **Save configuration**. You can now navigate to Dashboard, Threat Analysis, etc.
      4. Need a quick demo? Use the **Load demo configuration** button on the Setup page. It auto-fills:
         - Log path: `demo/example_suricata_log.json`
-        - Database: `demo/demo_config.db`
+        - Database: a working copy of `demo/demo_config.db` (in `demo/generated/`, so the committed file never changes)
         - Ollama endpoint: `http://127.0.0.1:11434`
         - Model: `phi4-mini`
         - Rules dir: `./suricata_rules` with dry-run enabled
@@ -133,8 +159,9 @@ The UI will open at `http://localhost:8501` and provides:
 
 **First steps:**
 1. Complete the Setup page before navigating elsewhere. Provide the Suricata log path, database path, and Ollama details.
-2. Set the `AUTODEFENDER_UI_PASSWORD` environment variable to require a password when launching the console.
-3. After setup is marked complete, open the Dashboard to begin monitoring.
+2. Set the `AUTODEFENDER_UI_PASSWORD` environment variable (at least 12 characters) before launching. The console refuses to start without it. On Streamlit Community Cloud, add it under **App settings -> Secrets** instead (see `.streamlit/secrets.toml.example`). For local development only, you can skip the password with `AUTODEFENDER_DEV=1` plus `--server.address localhost`.
+3. After setup is marked complete, open the Dashboard and click **Start monitoring**. A background monitor tails each log file (handling log rotation), detects threats, and writes them to the database while the dashboard refreshes. Tick "Process existing entries" to analyze a whole uploaded log.
+4. Log paths may be inside the project folder or Suricata's default log folders (`/var/log/suricata`, `C:\Program Files\Suricata\log`). To use other folders (for example `/etc/suricata/rules` for the rules directory), list them in `AUTODEFENDER_ALLOWED_DIRS`, separated by `:` on Linux/macOS or `;` on Windows.
 
 Additional guides now live under the `docs/` directory, including:
 - `docs/SURICATA_SETUP.md` for Suricata installation and configuration (Windows, Linux, Mac)
@@ -209,7 +236,7 @@ Manage trusted and malicious IP addresses:
 # Add IP to whitelist (threats from this IP will be ignored)
 python main.py --whitelist 192.168.1.100
 
-# Add IP to blacklist (threats from this IP will be auto-blocked)
+# Add IP to blacklist (traffic from this IP raises a HIGH alert; it is not blocked automatically)
 python main.py --blacklist 10.0.0.50
 
 # Remove from whitelist
@@ -262,7 +289,7 @@ The project ships with a built-in demo dataset that works on both localhost and 
 
 In the Streamlit Setup page, click **Load demo configuration** to pre-fill:
 - Suricata log path: `demo/example_suricata_log.json`
-- Database path: `demo/demo_config.db`
+- Database path: a working copy of `demo/demo_config.db` in `demo/generated/`
 - Ollama endpoint: `http://127.0.0.1:11434`
 - Ollama model: `phi4-mini`
 - Suricata rules directory: `./suricata_rules`
@@ -279,12 +306,12 @@ Need more help with Suricata itself? Check the following resources:
 
 The demo database (`demo/demo_config.db`) is pre-populated and included in the repository. It contains realistic sample threats showcasing all of AutoDefender's capabilities:
 
-- **GeoIP-enriched threats**: Examples from Russia, Germany, USA with ISP and location data
+- **GeoIP-enriched threats**: Examples with location and (fictional) ISP data
 - **Diverse attack types**: SSH brute force, Tor exit node scans, data exfiltration attempts, MITM attacks
 - **Playbook actions**: Multi-step response workflows (drop rule + log + webhook) demonstrating action bundling
 - **Various action states**: RECOMMENDED, EXECUTED, REJECTED, and FAILED actions for UI testing
 - **Rich AI explanations**: Detailed, context-aware threat descriptions explaining what happened, why it matters, and what to do
-- **Safe test data**: All IP addresses are example/test IPs (private ranges, TEST-NET, etc.) - no personal information
+- **Safe test data**: All IP addresses are private ranges or reserved documentation ranges (RFC 5737), and the ISP/organization names are fictional - no real companies or people
 
 The demo database is ready to use immediately on both localhost and Streamlit Cloud. It includes 6 sample threats and 9 associated actions.
 
@@ -327,8 +354,14 @@ This command regenerates `demo/demo_config.db` with fresh sample data for testin
 - **Playbook Actions**: AutoDefender bundles common responses (drop rule + log + webhook) into a single approval prompt. Approve once and all steps execute in order, keeping humans in the loop but reducing clicks.
 - **Playbook Editor**: Customize response workflows from the Streamlit UI. Define conditions (severity, keywords) and action sequences without editing JSON files manually.
 - **Webhook Notifications**: When you approve a playbook step with `WEBHOOK_NOTIFY`, the console sends a JSON payload to your configured webhook (e.g., Slack/Teams). Leave the webhook URL blank if you prefer to stay offline - no data leaves your machine by default.
-- **GeoIP Context**: Public IPs are automatically enriched with location, ISP, and network data. This context appears in AI explanations and webhook notifications.
-- **Multi-Source Monitoring**: Monitor multiple Suricata instances, archived logs, or distributed sensors by entering multiple file paths (one per line) in the Setup page.
+- **GeoIP Context**: Download the free [GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) City (and optionally ASN) database and set `AUTODEFENDER_GEOIP_CITY_DB` / `AUTODEFENDER_GEOIP_ASN_DB` to the `.mmdb` files. Public source IPs are then enriched with location and network data entirely offline. The context appears in AI explanations and webhook notifications.
+- **Blocks and Expiry**: Action Management lists every active drop rule. You can unblock an IP, and Settings has an optional block duration (0 = permanent, the default) after which rules are removed automatically. With `suricatasc` installed, rules can be reloaded without restarting Suricata (button or `SURICATA_AUTO_RELOAD=true`).
+- **Multi-Source Monitoring**: Monitor multiple Suricata instances, archived logs, or distributed sensors by entering multiple file paths (one per line) on the Setup page or Dashboard.
+- **Manual Steps**: `BLOCK_IP`, `RATE_LIMIT`, and `TERMINATE` recommendations are recorded as "done" when you mark them, but AutoDefender does not change your firewall. Apply them yourself; only `SURICATA_DROP_RULE` writes a rule.
+
+## Audit Log
+
+Sign-ins (including failures and lockouts), approvals, rejections, unblocks, IP list edits, exports, settings changes, and data deletion are recorded in a local audit log (`audit.db`, separate from the threat database so clearing threats never clears it). Open the **Audit Log** page in the console to read it. Each entry is hash-chained to the previous one, so the page can tell you if any entry was edited or deleted. Nothing is sent anywhere.
 
 ## Configuration
 
@@ -349,19 +382,31 @@ export OLLAMA_MODEL=your-model-name
 # Set Ollama endpoint
 export OLLAMA_ENDPOINT=http://localhost:11434
 
+# Web console password (required, 12+ characters)
+export AUTODEFENDER_UI_PASSWORD=choose-a-long-password
+
+# Optional: offline GeoIP with local MaxMind GeoLite2 databases
+export AUTODEFENDER_GEOIP_CITY_DB=/path/to/GeoLite2-City.mmdb
+export AUTODEFENDER_GEOIP_ASN_DB=/path/to/GeoLite2-ASN.mmdb
+
+# Optional: block duration in hours (0 = permanent), and reload rules via suricatasc
+export AUTODEFENDER_BLOCK_HOURS=0
+export SURICATA_AUTO_RELOAD=false
+export SURICATA_SOCKET=/var/run/suricata/suricata-command.socket
+
 # Suricata integration (optional)
 export SURICATA_ENABLED=true
 export SURICATA_RULES_DIR=./suricata_rules
 export AUTO_APPROVE_SURICATA=false
 export SURICATA_DRY_RUN=false
-export WEBHOOK_URL=https://your-webhook-url
+export WEBHOOK_URL=https://your-webhook-url   # must be https://
 ```
 
 ### Quick Reference (Non-Technical)
 
 - **Try online**: [https://autodefenderhackathon.streamlit.app/](https://autodefenderhackathon.streamlit.app/) - Demo database is pre-loaded and ready to use
 - **Start Suricata**: open PowerShell -> `cd "C:\Program Files\Suricata"` -> `.\suricata.exe -c suricata.yaml -i "Wi-Fi"`
-- **Run AutoDefender UI**: in the project folder -> `python -m streamlit run streamlit_app.py`
+- **Run AutoDefender UI**: in the project folder -> set `AUTODEFENDER_UI_PASSWORD` -> `python -m streamlit run streamlit_app.py`
 - **Run CLI monitor**: `python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model phi4-mini`
 - **Load demo data**: Setup page -> "Load demo configuration" -> Save (works on both localhost and Streamlit Cloud)
 - **Replay demo log** (optional): `python demo/log_replayer.py demo/example_suricata_log.json --interval 0.5 --loop`
@@ -469,7 +514,7 @@ Suricata integration works on Windows using file-based rule management:
 ## Project Structure
 
 ```
-AutoDefender_Hackathon/
+AutoDefender-Capstone/
 |-- main.py                 # CLI entry point
 |-- config.py               # Configuration management
 |-- analyzer.py             # Historical analysis
@@ -484,6 +529,9 @@ AutoDefender_Hackathon/
 |-- filter.py               # Threat filtering and search
 |-- exporter.py             # Export functionality (CSV/JSON)
 |-- ip_manager.py           # IP whitelist/blacklist management
+|-- mitre.py                # MITRE ATT&CK technique mapping
+|-- incidents.py            # Groups threats into incidents
+|-- audit.py                # Local hash-chained audit log
 |-- ui/                     # Terminal dashboard components
 |   |-- dashboard.py        # CLI dashboard with threat/stats panels
 |-- streamlit_app.py        # Streamlit entry point
@@ -498,18 +546,44 @@ AutoDefender_Hackathon/
 |-- docs/                   # Additional guides and references
 |   |-- SURICATA_SETUP.md   # Suricata installation and configuration
 |   |-- AGENTIC_GUIDE.md    # AI-driven agentic automation guide
+|-- tests/                  # pytest suite (run: python -m pytest)
+|-- tools/
+|   |-- check_demo_data.py  # Fails if real IPs/organizations appear in the repo
+|   |-- populate_demo_db.py # Regenerates the demo database
+|-- Dockerfile, docker-compose.yml
+|-- .github/                # CI checks and Dependabot updates
 |-- requirements.txt        # Python dependencies
+|-- requirements-dev.txt    # Test and scanning tools
 |-- README.md               # This file
 ```
 
 ## Security & Privacy
 
-- **Local Processing**: All analysis runs locally - no data sent to external services
+- **Password Required**: The web console refuses to start without `AUTODEFENDER_UI_PASSWORD` (12+ characters). There are no user accounts or sign-up pages. The password is compared in constant time, and 5 wrong attempts lock sign-in for 5 minutes across all browser tabs
+- **Audit Trail**: Security-relevant actions are recorded in a local, hash-chained, tamper-evident audit log
+- **Local Processing**: Analysis, AI explanations (Ollama), and GeoIP lookups all run locally. Nothing leaves your machine unless you configure a webhook
+- **Safe Rule Writing**: Only single-IP `drop` rules are written. AI-suggested rules must target the threat's own source IP; rules for `any`, loopback, or whitelisted IPs are refused, and SIDs are assigned by AutoDefender
+- **Human Approval**: Firewall rules need manual approval unless you explicitly enable auto-approval
+- **Network Exposure**: The console listens on localhost only (`.streamlit/config.toml`). Expose it only behind a reverse proxy with HTTPS
+- **Sessions**: Idle sessions are signed out after 30 minutes
+- **Data Retention**: Settings -> Database can delete threats older than N days (default from `AUTODEFENDER_RETENTION_DAYS`, 90). Clearing data also compacts the database so deleted records don't linger on disk
+- **File Permissions**: On Linux/macOS, new databases and CLI exports are created readable by your user only; web exports are generated in memory, not saved on the server
+- **Untrusted Log Data**: Log fields and AI output are escaped before display, fenced off in AI prompts, and neutralized in CSV exports (no spreadsheet formulas)
 - **SQL Injection Protection**: All database queries use parameterized statements
-- **Input Validation**: All user inputs are validated and sanitized
-- **File Permissions**: Database and IP list files use appropriate permissions
+- **Upload Handling**: Uploaded files are saved under `uploads/` with random names and an allow-listed extension
+- **CORS/XSRF Protection**: Streamlit's CORS and XSRF protections stay on (see `.streamlit/config.toml`)
 - **No Data Collection**: No telemetry or usage data is collected
-- **Secure Storage**: Sensitive data stored in local SQLite database with proper access controls
+- **No Real-World Data in the Repo**: Demo data and docs only use private and documentation IP ranges, documentation AS numbers, and fictional organization names. `python tools/check_demo_data.py` enforces this, and the GitHub Actions workflow runs it (plus the test suite, bandit, and pip-audit) on every push. Dependabot opens weekly update PRs for dependencies, actions, and the Docker base image
+
+## Development and Tests
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest
+python tools/check_demo_data.py
+```
+
+The suite covers detection, rule safety, log tailing (rotation and partial lines), the database, exports, ATT&CK mapping, incidents, the audit chain, GeoIP, and the web console (sign-in, lockout, every page, monitoring, approvals).
 
 ## Requirements
 

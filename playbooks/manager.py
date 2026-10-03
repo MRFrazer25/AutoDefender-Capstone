@@ -14,6 +14,9 @@ from utils.path_utils import sanitize_path
 
 logger = logging.getLogger(__name__)
 
+# Step types a playbook may produce; anything else in the file is skipped
+ALLOWED_STEP_TYPES = {"SURICATA_DROP_RULE", "LOG", "WEBHOOK_NOTIFY"}
+
 
 class PlaybookManager:
     """Load playbooks and generate suggested actions."""
@@ -22,7 +25,7 @@ class PlaybookManager:
         default_path = Path("playbooks/playbooks.json")
         if playbook_path:
             try:
-                default_path = sanitize_path(playbook_path)
+                default_path = Path(sanitize_path(playbook_path))
             except ValueError as exc:
                 logger.warning(f"Invalid playbook path provided: {exc}")
         self.playbook_file = default_path
@@ -66,6 +69,9 @@ class PlaybookManager:
         actions: List[Action] = []
         for step in steps:
             action_type = step.get("type", "LOG")
+            if action_type not in ALLOWED_STEP_TYPES:
+                logger.warning(f"Skipping playbook step with unknown type {action_type!r}")
+                continue
             description = step.get("description", playbook.get("name", "Playbook step"))
             actions.append(
                 Action(
@@ -73,7 +79,7 @@ class PlaybookManager:
                     action_type=action_type,
                     description=f"[{playbook.get('name','Playbook')}] {description}",
                     status="RECOMMENDED",
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(),
                     executed_at=None,
                 )
             )

@@ -1,13 +1,47 @@
 """Setup page for initial configuration."""
 
-import os
-import tempfile
+import logging
+import shutil
+import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 import streamlit as st
 
 from config import Config
+from notifications.webhook import is_valid_webhook_url
+from streamlit_pages.session_config import record
 from utils.path_utils import sanitize_path
+
+logger = logging.getLogger(__name__)
+
+# Uploads are stored inside the project so the path checks accept them
+UPLOAD_DIR = Path("uploads")
+
+DEMO_LOG = Path("demo/example_suricata_log.json")
+DEMO_DB = Path("demo/demo_config.db")
+DEMO_WORKING_DB = Path("demo/generated/demo_session.db")
+
+
+def _save_upload(uploaded_file, allowed_suffixes: set) -> Path:
+    """Save an uploaded file under a random name and return its absolute path.
+
+    The browser-supplied filename is never used as a path, only its extension.
+    """
+    suffix = Path(uploaded_file.name).suffix.lower()
+    if suffix not in allowed_suffixes:
+        raise ValueError(f"File type {suffix or '(none)'} is not allowed")
+    UPLOAD_DIR.mkdir(exist_ok=True)
+    saved_path = UPLOAD_DIR / f"{uuid.uuid4().hex}{suffix}"
+    with open(saved_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return saved_path.resolve()
+
+
+def is_valid_service_url(url: str) -> bool:
+    """Accept only http(s) URLs with a host, e.g. the Ollama endpoint."""
+    parsed = urlparse(url or "")
+    return parsed.scheme in ("http", "https") and bool(parsed.hostname)
 
 
 def show() -> None:
@@ -24,100 +58,42 @@ def show() -> None:
 
     if demo_clicked:
         try:
-            # Use relative paths that work on both localhost and Streamlit Cloud
-            demo_log_path = "demo/example_suricata_log.json"
-            demo_db_path = "demo/demo_config.db"
-            demo_rules_dir = "./suricata_rules"
-            
-            # Check if demo files exist
-            demo_log_file = Path(demo_log_path)
-            demo_db_file = Path(demo_db_path)
-            
-            if not demo_log_file.exists():
-                st.warning(f"Demo log file not found: {demo_log_path}")
-            if not demo_db_file.exists():
-                st.warning(f"Demo database not found: {demo_db_path}")
-            
-            # Ensure demo database exists and is populated
-            demo_db_file.parent.mkdir(parents=True, exist_ok=True)
-            if not demo_db_file.exists():
-                from database import Database
-                demo_db = Database(str(demo_db_file))
-                demo_db.close()
-            
-            # Check if database needs to be populated
-            from database import Database
-            demo_db = Database(str(demo_db_file))
-            demo_threats = demo_db.get_threats()
-            threat_count = len(demo_threats)
-            
-            if threat_count == 0:
-                # Try to populate the demo database
-                try:
-                    import subprocess
-                    import sys
-                    populate_script = Path("tools/populate_demo_db.py")
-                    if populate_script.exists():
-                        result = subprocess.run(
-                            [sys.executable, str(populate_script)],
-                            capture_output=True,
-                            text=True,
-                            cwd=Path.cwd()
-                        )
-                        if result.returncode == 0:
-                            # Reload threats after population
-                            demo_db.close()
-                            demo_db = Database(str(demo_db_file))
-                            demo_threats = demo_db.get_threats()
-                            threat_count = len(demo_threats)
-                        else:
-                            st.warning(f"Could not populate demo database: {result.stderr}")
-                except Exception as e:
-                    # On Streamlit Cloud, subprocess might not work, that's okay
-                    st.info(f"Auto-population not available in this environment. Demo database may be empty.")
-            
-            demo_db.close()
-            
-            # Set session state with relative paths (work on both localhost and Streamlit Cloud)
-            st.session_state.log_path = demo_log_path
-            st.session_state.db_path = demo_db_path
+            if not DEMO_LOG.exists() or not DEMO_DB.exists():
+                st.error("Demo files are missing from the demo/ folder.")
+                st.stop()
+            # Work on a copy so monitoring and approvals never modify the committed demo database
+            DEMO_WORKING_DB.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(DEMO_DB, DEMO_WORKING_DB)
+
+            st.session_state.log_path = str(DEMO_LOG)
+            st.session_state.db_path = str(DEMO_WORKING_DB)
             st.session_state.ollama_endpoint = "http://127.0.0.1:11434"
             st.session_state.ollama_model = "phi4-mini"
-            st.session_state.suricata_rules_dir = demo_rules_dir
+            st.session_state.suricata_rules_dir = "./suricata_rules"
             st.session_state.suricata_enabled = True
             st.session_state.suricata_dry_run = True
             st.session_state.setup_complete = True
-            
+
             # Also update widget keys so text inputs display the new values
-            st.session_state.log_path_input = demo_log_path
-            st.session_state.db_path_input = demo_db_path
-            
+            st.session_state.log_path_input = str(DEMO_LOG)
+            st.session_state.db_path_input = str(DEMO_WORKING_DB)
+
             # Clear processed file tracking so demo paths work
-            if "processed_log_files" in st.session_state:
-                del st.session_state["processed_log_files"]
-            if "processed_db_file" in st.session_state:
-                del st.session_state["processed_db_file"]
-
-            # Set environment variables for immediate use
-            os.environ["SURICATA_LOG_PATH"] = st.session_state.log_path
-            os.environ["SURICATA_ENABLED"] = "true" if st.session_state.suricata_enabled else "false"
-            os.environ["SURICATA_RULES_DIR"] = st.session_state.suricata_rules_dir
-            os.environ["SURICATA_DRY_RUN"] = "true" if st.session_state.suricata_dry_run else "false"
-            os.environ["OLLAMA_ENDPOINT"] = st.session_state.ollama_endpoint
-            os.environ["OLLAMA_MODEL"] = st.session_state.ollama_model
-            os.environ["DB_PATH"] = st.session_state.db_path
-
-            # Show success message
-            if threat_count > 0:
-                st.success(f"Demo configuration loaded! Database has {threat_count} threats. Navigate to Dashboard or Threat Analysis to view them.")
-            else:
-                st.warning("Demo database is empty. The demo database will be created when you start monitoring or analyzing.")
-            
+            st.session_state.pop("processed_log_files", None)
+            st.session_state.pop("processed_db_file", None)
+            st.session_state.setup_notice = (
+                "Demo configuration loaded (dry-run mode, working copy of the demo database). "
+                "Open the Dashboard or Threat Analysis to explore it."
+            )
             st.rerun()
-        except Exception as exc:
-            st.error(f"Unable to load demo configuration: {exc}")
-            import traceback
-            st.code(traceback.format_exc())
+        except OSError:
+            # Full details go to the server log, not the browser
+            logger.exception("Unable to load demo configuration")
+            st.error("Unable to load demo configuration. Check the server log for details.")
+
+    notice = st.session_state.pop("setup_notice", None)
+    if notice:
+        st.success(notice)
 
     default_log_path = st.session_state.get(
         "log_path", config.DEFAULT_SURICATA_LOG_PATH
@@ -174,14 +150,11 @@ def show() -> None:
                 file_id = f"{uploaded_file.name}_{uploaded_file.size}"
                 if file_id not in st.session_state[processed_key]:
                     # Save uploaded files and use their paths
-                    upload_dir = Path(tempfile.gettempdir()) / "autodefender_uploads"
-                    upload_dir.mkdir(exist_ok=True)
-                    
-                    saved_path = upload_dir / uploaded_file.name
-                    with open(saved_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
-                    # Use absolute path and normalize for Windows
-                    abs_path = saved_path.resolve()
+                    try:
+                        abs_path = _save_upload(uploaded_file, {".json", ".log", ".txt"})
+                    except ValueError as exc:
+                        st.error(str(exc))
+                        continue
                     new_files.append(str(abs_path))
                     st.session_state[processed_key].add(file_id)
             
@@ -191,7 +164,7 @@ def show() -> None:
                 existing_paths = [p.strip() for p in existing_paths if p.strip()]
                 all_paths = existing_paths + new_files
                 st.session_state.log_path = "\n".join(all_paths)
-                st.success(f"File(s) saved. Path(s) updated above.")
+                st.success("File(s) saved. Path(s) updated above.")
                 st.rerun()
     
     # Database path section with native file picker
@@ -227,16 +200,14 @@ def show() -> None:
             file_id = f"{uploaded_db.name}_{uploaded_db.size}"
             if st.session_state[processed_key] != file_id:
                 # Save uploaded file and use its path
-                upload_dir = Path(tempfile.gettempdir()) / "autodefender_uploads"
-                upload_dir.mkdir(exist_ok=True)
-                saved_path = upload_dir / uploaded_db.name
-                with open(saved_path, "wb") as f:
-                    f.write(uploaded_db.getbuffer())
-                # Use absolute path and normalize for Windows
-                abs_path = saved_path.resolve()
+                try:
+                    abs_path = _save_upload(uploaded_db, {".db", ".sqlite", ".sqlite3"})
+                except ValueError as exc:
+                    st.error(str(exc))
+                    st.stop()
                 st.session_state.db_path = str(abs_path)
                 st.session_state[processed_key] = file_id
-                st.success(f"File saved. Path updated above.")
+                st.success("File saved. Path updated above.")
                 st.rerun()
 
     with st.form("setup_form"):
@@ -291,6 +262,10 @@ def show() -> None:
             errors.append("Ollama endpoint is required.")
         if not ollama_model.strip():
             errors.append("Ollama model name is required.")
+        if ollama_endpoint.strip() and not is_valid_service_url(ollama_endpoint.strip()):
+            errors.append("Ollama endpoint must be an http:// or https:// URL.")
+        if webhook_url.strip() and not is_valid_webhook_url(webhook_url.strip()):
+            errors.append("Webhook URL must be an https:// URL.")
 
         if errors:
             for error in errors:
@@ -301,7 +276,7 @@ def show() -> None:
         try:
             # Handle multi-path log input BEFORE sanitization
             log_paths = [l.strip() for l in log_path.strip().split('\n') if l.strip()]
-            sanitized_paths = [sanitize_path(p) for p in log_paths]
+            sanitized_paths = [sanitize_path(p, include_log_dirs=True) for p in log_paths]
             
             sanitized_db_path = sanitize_path(db_path)
             sanitized_rules_dir = sanitize_path(rules_dir)
@@ -320,15 +295,7 @@ def show() -> None:
         st.session_state.webhook_url = webhook_url.strip()
         st.session_state.setup_complete = True
 
-        os.environ["SURICATA_LOG_PATH"] = st.session_state.log_path
-        os.environ["SURICATA_ENABLED"] = "true" if suricata_enabled else "false"
-        os.environ["SURICATA_RULES_DIR"] = st.session_state.suricata_rules_dir
-        os.environ["SURICATA_DRY_RUN"] = "true" if dry_run else "false"
-        os.environ["OLLAMA_ENDPOINT"] = st.session_state.ollama_endpoint
-        os.environ["OLLAMA_MODEL"] = st.session_state.ollama_model
-        if webhook_url.strip():
-            os.environ["WEBHOOK_URL"] = webhook_url.strip()
-
+        record("setup_saved", {"db": sanitized_db_path, "suricata_enabled": suricata_enabled, "dry_run": dry_run})
         st.success("Configuration saved. You can now use the other pages.")
 
     st.markdown("### Status")
@@ -342,7 +309,7 @@ def show() -> None:
         "- Verify the log file path and ensure the account running this console can read it.\n"
         "- Run Ollama locally or expose it on a secure internal network.\n"
         "- Keep this console behind a VPN or reverse proxy with authentication.\n"
-        "- Set the AUTODEFENDER_UI_PASSWORD environment variable to require a password."
+        "- The console requires the AUTODEFENDER_UI_PASSWORD environment variable (12+ characters)."
     )
 
     # Validate log paths if any are configured
@@ -356,7 +323,7 @@ def show() -> None:
         for log_path in log_paths:
             # Sanitize path before checking
             try:
-                sanitized = sanitize_path(log_path)
+                sanitized = sanitize_path(log_path, include_log_dirs=True)
                 path_obj = Path(sanitized)
                 if path_obj.exists():
                     existing_paths.append(log_path)

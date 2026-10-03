@@ -1,9 +1,15 @@
 """Playbook Editor Page - Create and modify response playbooks."""
 
-import streamlit as st
 import json
+import os
+import re
+
+import streamlit as st
 from pathlib import Path
 from typing import Dict, List, Any
+
+from streamlit_pages.session_config import record
+from utils.display import md_escape
 
 PLAYBOOK_FILE = Path("playbooks/playbooks.json")
 
@@ -15,6 +21,8 @@ ACTION_TYPES = [
 
 SEVERITY_OPTIONS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 
+PLAYBOOK_ID_PATTERN = re.compile(r"[a-z0-9_]{1,50}")
+
 
 def load_playbooks() -> List[Dict[str, Any]]:
     """Load playbooks from JSON file."""
@@ -22,8 +30,9 @@ def load_playbooks() -> List[Dict[str, Any]]:
         return []
     
     try:
-        with open(PLAYBOOK_FILE, 'r') as f:
-            return json.load(f)
+        with open(PLAYBOOK_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
     except Exception as e:
         st.error(f"Error loading playbooks: {e}")
         return []
@@ -33,8 +42,11 @@ def save_playbooks(playbooks: List[Dict[str, Any]]) -> bool:
     """Save playbooks to JSON file."""
     try:
         PLAYBOOK_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(PLAYBOOK_FILE, 'w') as f:
+        # Write a temporary file and swap it in so a crash can't leave a half-written file
+        temp_file = PLAYBOOK_FILE.with_suffix(".json.tmp")
+        with open(temp_file, 'w', encoding='utf-8') as f:
             json.dump(playbooks, f, indent=2)
+        os.replace(temp_file, PLAYBOOK_FILE)
         return True
     except Exception as e:
         st.error(f"Error saving playbooks: {e}")
@@ -42,25 +54,33 @@ def save_playbooks(playbooks: List[Dict[str, Any]]) -> bool:
 
 
 def validate_playbook(playbook: Dict[str, Any]) -> tuple[bool, str]:
-    """Validate playbook structure."""
-    if not playbook.get('id'):
-        return False, "Playbook ID is required"
+    """Validate playbook structure and limit sizes."""
+    if not PLAYBOOK_ID_PATTERN.fullmatch(playbook.get('id') or ''):
+        return False, "Playbook ID must be 1-50 lowercase letters, digits, or underscores"
     
-    if not playbook.get('name'):
-        return False, "Playbook name is required"
+    name = playbook.get('name') or ''
+    if not name.strip() or len(name) > 100:
+        return False, "Playbook name is required (up to 100 characters)"
     
-    if not playbook.get('conditions'):
-        return False, "Conditions are required"
+    conditions = playbook.get('conditions') or {}
+    severities = conditions.get('severity') or []
+    if not severities or any(s not in SEVERITY_OPTIONS for s in severities):
+        return False, "At least one valid severity level is required"
     
-    if not playbook['conditions'].get('severity'):
-        return False, "At least one severity level is required"
+    keywords = conditions.get('keywords') or []
+    if len(keywords) > 20 or any(len(k) > 50 for k in keywords):
+        return False, "Use up to 20 keywords of up to 50 characters each"
     
-    if not playbook.get('steps'):
-        return False, "At least one action step is required"
+    steps = playbook.get('steps') or []
+    if not steps or len(steps) > 10:
+        return False, "A playbook needs 1 to 10 action steps"
     
-    for step in playbook['steps']:
-        if not step.get('type') or not step.get('description'):
-            return False, "Each step needs a type and description"
+    for step in steps:
+        if step.get('type') not in ACTION_TYPES:
+            return False, "Each step needs a valid action type"
+        description = step.get('description') or ''
+        if not description.strip() or len(description) > 200:
+            return False, "Each step needs a description (up to 200 characters)"
     
     return True, ""
 
@@ -83,7 +103,7 @@ def show():
     
     # List existing playbooks
     for idx, pb in enumerate(playbooks):
-        if st.sidebar.button(f"[Playbook] {pb['name']}", key=f"pb_{idx}"):
+        if st.sidebar.button(f"[Playbook] {md_escape(pb['name'])}", key=f"pb_{idx}"):
             st.session_state.selected_playbook_idx = idx
             st.session_state.creating_new = False
     
@@ -109,13 +129,13 @@ def show():
         if playbooks:
             st.markdown("### Current Playbooks")
             for pb in playbooks:
-                with st.expander(f"{pb['name']} (`{pb['id']}`)"):
+                with st.expander(f"{md_escape(pb['name'])} ({md_escape(pb['id'])})"):
                     st.write(f"**Triggers on:** {', '.join(pb['conditions']['severity'])} severity")
                     if pb['conditions'].get('keywords'):
-                        st.write(f"**Keywords:** {', '.join(pb['conditions']['keywords'])}")
+                        st.write(f"**Keywords:** {md_escape(', '.join(pb['conditions']['keywords']))}")
                     st.write(f"**Actions:** {len(pb['steps'])} steps")
                     for i, step in enumerate(pb['steps'], 1):
-                        st.write(f"{i}. {step['type']}: {step['description']}")
+                        st.text(f"{i}. {step['type']}: {step['description']}")
 
 
 def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict[str, Any]], idx: int | None = None):
@@ -257,6 +277,7 @@ def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict
                     all_playbooks.append(new_playbook)
                 
                 if save_playbooks(all_playbooks):
+                    record("playbook_saved", {"id": pb_id, "name": pb_name, "steps": len(new_playbook["steps"])})
                     st.success(f"Playbook '{pb_name}' saved successfully!")
                     st.session_state.creating_new = False
                     st.session_state.selected_playbook_idx = None
@@ -265,9 +286,10 @@ def edit_playbook_form(playbook: Dict[str, Any] | None, all_playbooks: List[Dict
                     st.rerun()
         
         if delete_btn and idx is not None:
-            all_playbooks.pop(idx)
+            removed = all_playbooks.pop(idx)
             if save_playbooks(all_playbooks):
-                st.success(f"Playbook deleted.")
+                record("playbook_deleted", {"id": removed.get("id")})
+                st.success("Playbook deleted.")
                 st.session_state.selected_playbook_idx = None
                 if f'editing_steps_{form_key}' in st.session_state:
                     del st.session_state[f'editing_steps_{form_key}']

@@ -4,23 +4,56 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
+
+# Where Suricata writes eve.json by default; log paths may point here
+DEFAULT_SURICATA_LOG_DIRS = (
+    "/var/log/suricata",
+    r"C:\Program Files\Suricata\log",
+)
+
+# Extra folders the operator allows, separated by os.pathsep (";" on Windows, ":" elsewhere)
+ALLOWED_DIRS_ENV = "AUTODEFENDER_ALLOWED_DIRS"
 
 
-def sanitize_path(path_str: str) -> str:
-    """Normalize user-supplied path strings into safe, absolute paths.
-    
-    Restricts paths to be within the current working directory
-    to prevent path traversal attacks. Returns a normalized string path.
-    
+def allowed_base_dirs(include_log_dirs: bool = False) -> list[str]:
+    """Return the folders user-supplied paths must stay inside.
+
+    Always the current working directory, plus anything listed in
+    AUTODEFENDER_ALLOWED_DIRS. Log paths may also use Suricata's default
+    log folders.
+    """
+    dirs = [os.getcwd()]
+    dirs += [d for d in os.getenv(ALLOWED_DIRS_ENV, "").split(os.pathsep) if d.strip()]
+    if include_log_dirs:
+        dirs += list(DEFAULT_SURICATA_LOG_DIRS)
+    return [os.path.realpath(os.path.expanduser(d.strip())) for d in dirs]
+
+
+def _is_within(path: str, base: str) -> bool:
+    path_c, base_c = os.path.normcase(path), os.path.normcase(base)
+    try:
+        return os.path.commonpath([path_c, base_c]) == base_c
+    except ValueError:
+        # Different drives on Windows
+        return False
+
+
+def sanitize_path(path_str: str, include_log_dirs: bool = False) -> str:
+    """Normalize a user-supplied path and make sure it stays inside an allowed folder.
+
+    Relative paths are resolved against the current working directory.
+    Symlinks are resolved first, so a link can't point outside the allowed
+    folders.
+
     Args:
         path_str: User-supplied path string
-        
+        include_log_dirs: Also allow Suricata's default log folders
+
     Returns:
         Normalized absolute path string
-        
+
     Raises:
-        ValueError: If the path is empty, contains invalid characters, or attempts traversal.
+        ValueError: If the path is empty, contains invalid characters, or is outside the allowed folders.
     """
     if path_str is None:
         raise ValueError("Path is required.")
@@ -30,49 +63,15 @@ def sanitize_path(path_str: str) -> str:
         raise ValueError("Path cannot be empty.")
     if "\x00" in cleaned:
         raise ValueError("Path contains invalid characters.")
-    
-    # Use current working directory as safe base - this is trusted, not user input
-    base_dir_str = os.getcwd()
-    base_dir_normalized = os.path.abspath(os.path.normpath(base_dir_str))
-    
-    # Handle absolute paths
-    if os.path.isabs(cleaned):
-        expanded = os.path.expanduser(cleaned)
-        abs_cleaned = os.path.abspath(expanded)
-        norm_cleaned = os.path.normpath(abs_cleaned)
-        
-        # Ensure path is within base directory
-        if not norm_cleaned.startswith(base_dir_normalized + os.sep) and norm_cleaned != base_dir_normalized:
-            raise ValueError(f"Absolute path {cleaned} is outside allowed base directory {base_dir_normalized}")
-        
-        # Check for traversal sequences in normalized path
-        if ".." in norm_cleaned:
-            raise ValueError("Path contains traversal sequences (..) which are not allowed.")
-        
-        return norm_cleaned
-    else:
-        # Handle relative paths
-        cleaned_relative = cleaned
-        if cleaned_relative.startswith('./') or cleaned_relative.startswith('.\\'):
-            cleaned_relative = cleaned_relative[2:]
-        cleaned_relative = cleaned_relative.lstrip('/').lstrip('\\')
-        
-        # Join with base directory using os.path.join
-        safe_path_str = os.path.join(base_dir_normalized, cleaned_relative)
-        abs_safe = os.path.abspath(safe_path_str)
-        norm_safe = os.path.normpath(abs_safe)
-        
-        # Ensure path is still within base directory
-        if not norm_safe.startswith(base_dir_normalized + os.sep) and norm_safe != base_dir_normalized:
-            raise ValueError(f"Path {cleaned} resolves outside allowed base directory {base_dir_normalized}")
-        
-        # Check for traversal sequences
-        if ".." in norm_safe:
-            raise ValueError("Path contains traversal sequences (..) which are not allowed.")
-        
-        return norm_safe
 
+    resolved = os.path.realpath(os.path.expanduser(cleaned))
+    if any(_is_within(resolved, base) for base in allowed_base_dirs(include_log_dirs)):
+        return resolved
 
+    raise ValueError(
+        f"Path {cleaned} is outside the allowed folders. "
+        f"Add its folder to {ALLOWED_DIRS_ENV} to allow it."
+    )
 
 
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -82,6 +81,5 @@ def sanitize_filename(name: str, default: str = "export") -> str:
     """Return a filesystem-safe filename."""
     if not name:
         return default
-    cleaned = _SAFE_FILENAME.sub("_", name.strip())
-    return cleaned or default
-
+    cleaned = _SAFE_FILENAME.sub("_", name.strip()).lstrip(".")
+    return cleaned[:100] or default

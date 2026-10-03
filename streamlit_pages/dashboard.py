@@ -1,6 +1,6 @@
 """Dashboard page with real-time monitoring and statistics."""
 
-import os
+import logging
 import time
 from datetime import datetime
 from pathlib import Path
@@ -9,9 +9,19 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from config import Config
 from database import Database
+from streamlit_pages.session_config import (
+    record,
+    config_from_session,
+    monitoring_status,
+    start_monitoring,
+    stop_monitoring,
+)
+from mitre import techniques_for
+from utils.display import md_escape
 from utils.path_utils import sanitize_path
+
+logger = logging.getLogger(__name__)
 
 
 def show() -> None:
@@ -21,74 +31,89 @@ def show() -> None:
         unsafe_allow_html=True,
     )
 
-    config = Config.get_default()
     try:
-        db_path_value = st.session_state.get("db_path", config.db_path)
-        db_path = sanitize_path(db_path_value)
+        config = config_from_session()
     except ValueError as exc:
-        st.error(f"Invalid database path: {exc}")
+        st.error(f"Invalid path in current settings: {exc}")
         return
-    db = Database(db_path)
+    db = Database(config.db_path)
 
+    status = monitoring_status()
     col1, col2, col3 = st.columns([2, 1, 1])
 
     with col1:
-        log_path = st.text_input(
-            "Suricata log path",
+        log_path = st.text_area(
+            "Suricata log path(s), one per line",
             value=st.session_state.get("log_path", config.DEFAULT_SURICATA_LOG_PATH),
+            height=68,
             help="Path to the Suricata eve.json log file.",
-            placeholder="Example: C:\\Program Files\\Suricata\\log\\eve.json",
+            placeholder="Example: /var/log/suricata/eve.json",
+            disabled=status is not None,
         )
-        try:
-            sanitized_log_path = sanitize_path(log_path)
-        except ValueError as exc:
-            st.error(f"Invalid log path: {exc}")
-            sanitized_log_path = log_path
-        st.session_state.log_path = sanitized_log_path
+        read_from_start = st.checkbox(
+            "Process existing entries in the log, not just new ones",
+            value=False,
+            disabled=status is not None,
+        )
 
     with col2:
-        monitoring = st.session_state.get("monitoring", False)
-        if not monitoring:
+        if status is None:
             if st.button("Start monitoring", type="primary", use_container_width=True):
-                # Support multiple log paths (newline-separated)
-                # Split and sanitize each path individually
-                raw_paths = [p.strip() for p in sanitized_log_path.split('\n') if p.strip()]
-                sanitized_paths = []
-                missing_paths = []
-                
+                raw_paths = [p.strip() for p in log_path.splitlines() if p.strip()]
+                sanitized_paths, problems = [], []
                 for raw_path in raw_paths:
                     try:
-                        sanitized = sanitize_path(raw_path)
-                        normalized_path = os.path.abspath(os.path.normpath(sanitized))
-                        sanitized_paths.append(normalized_path)
-                        if not os.path.exists(normalized_path):
-                            missing_paths.append(normalized_path)
-                    except ValueError:
-                        missing_paths.append(raw_path)
-                
-                if missing_paths:
-                    st.error(f"Log file(s) not found: {', '.join(missing_paths)}")
+                        sanitized = sanitize_path(raw_path, include_log_dirs=True)
+                    except ValueError as exc:
+                        problems.append(str(exc))
+                        continue
+                    sanitized_paths.append(sanitized)
+                    if not Path(sanitized).is_file():
+                        problems.append(f"Log file not found: {sanitized}")
+
+                if not sanitized_paths and not problems:
+                    problems.append("Enter at least one log path.")
+                if problems:
+                    for problem in problems:
+                        st.error(problem)
                 else:
-                    st.session_state.monitoring = True
-                    st.success(f"Monitoring started for {len(sanitized_paths)} source(s).")
-                    st.rerun()
+                    try:
+                        start_monitoring(sanitized_paths, config, read_from_start=read_from_start)
+                        record("monitoring_started", {"sources": sanitized_paths, "db": config.db_path})
+                    except Exception:
+                        logger.exception("Could not start monitoring")
+                        st.error("Could not start monitoring. Check the server log for details.")
+                    else:
+                        st.session_state.log_path = "\n".join(sanitized_paths)
+                        st.rerun()
         else:
             if st.button("Stop monitoring", type="secondary", use_container_width=True):
-                st.session_state.monitoring = False
-                st.info("Monitoring stopped.")
+                stop_monitoring()
+                record("monitoring_stopped")
                 st.rerun()
 
     with col3:
         auto_refresh = st.checkbox(
             "Auto-refresh",
             value=True,
-            help="Refresh the dashboard every two seconds while monitoring.",
+            help="Refresh the dashboard automatically while monitoring.",
         )
+
+    if status:
+        st.success(
+            f"Monitoring {len(status['sources'])} source(s): "
+            f"{status['events_processed']} events processed, "
+            f"{status['threats_detected']} threats detected."
+        )
+        if status["db_path"] != config.db_path:
+            st.warning(f"The running monitor writes to a different database: {status['db_path']}")
+    else:
+        st.info("Monitoring is stopped. The dashboard shows threats already in the database.")
 
     st.markdown("---")
 
     st.subheader("Current metrics")
-    threats = db.get_threats(limit=1000)
+    threats = db.get_threats(limit=int(st.session_state.get("max_displayed_threats", 1000)))
 
     severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
     for threat in threats:
@@ -265,21 +290,26 @@ def show() -> None:
                     detail_col1, detail_col2 = st.columns(2)
 
                     with detail_col1:
-                        st.markdown(f"**Severity:** `{threat.severity}`")
-                        st.markdown(f"**Event type:** `{threat.event_type}`")
-                        st.markdown(f"**Source IP:** `{threat.source_ip or 'N/A'}`")
-                        st.markdown(f"**Destination IP:** `{threat.dest_ip or 'N/A'}`")
+                        st.markdown(f"**Severity:** {md_escape(threat.severity)}")
+                        st.markdown(f"**Event type:** {md_escape(threat.event_type)}")
+                        st.markdown(f"**Source IP:** {md_escape(threat.source_ip or 'N/A')}")
+                        st.markdown(f"**Destination IP:** {md_escape(threat.dest_ip or 'N/A')}")
                         if threat.dest_port:
-                            st.markdown(f"**Destination port:** `{threat.dest_port}`")
+                            st.markdown(f"**Destination port:** {md_escape(threat.dest_port)}")
 
                     with detail_col2:
-                        st.markdown(f"**Timestamp:** `{threat.timestamp}`")
+                        st.markdown(f"**Timestamp:** {md_escape(threat.timestamp)}")
                         st.markdown("**Description:**")
-                        st.info(threat.description)
+                        st.info(md_escape(threat.description))
+                        techniques = techniques_for(threat)
+                        if techniques:
+                            st.markdown("**MITRE ATT&CK:** " + ", ".join(
+                                f"[{t['id']}]({t['url']}) {md_escape(t['name'])} ({md_escape(t['tactic'])})" for t in techniques
+                            ))
 
                     if threat.ai_explanation:
                         st.markdown("**AI analysis:**")
-                        st.success(threat.ai_explanation)
+                        st.success(md_escape(threat.ai_explanation))
                     else:
                         st.warning("AI explanation is not available yet.")
 
@@ -288,8 +318,8 @@ def show() -> None:
                         st.markdown("**Recommended actions:**")
                         for action in actions:
                             st.markdown(
-                                f"- {action.action_type}: {action.description} "
-                                f"(status: {action.status})"
+                                f"- {md_escape(action.action_type)}: {md_escape(action.description)} "
+                                f"(status: {md_escape(action.status)})"
                             )
     else:
         st.info("No threats match the current filters.")
@@ -319,9 +349,9 @@ def show() -> None:
         else:
             st.info("Source IP data is not available.")
 
-    if auto_refresh and st.session_state.get("monitoring", False):
-        time.sleep(2)
-        st.rerun()
-
     db.close()
+
+    if auto_refresh and status:
+        time.sleep(float(st.session_state.get("refresh_rate", 2.0)))
+        st.rerun()
 

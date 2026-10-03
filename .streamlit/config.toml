@@ -1,0 +1,18 @@
+# Security-related Streamlit settings. Keep CORS and XSRF protection on;
+# if a Codespaces preview breaks, make the forwarded port Private instead.
+[server]
+# Only listen on this machine. To reach the console from other hosts, put it behind
+# a reverse proxy with HTTPS and run with --server.address 0.0.0.0
+address = "localhost"
+enableCORS = true
+enableXsrfProtection = true
+# Upload limit in MB (log and database files)
+maxUploadSize = 50
+
+[client]
+# Show generic errors in the browser; full tracebacks stay in the server log
+showErrorDetails = false
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false

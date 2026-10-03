@@ -23,6 +23,13 @@ autodefender.db
 !demo/demo_config.db
 exports/
 backups/
+uploads/
+playbooks/*.tmp
+
+# GeoIP databases and rule tracking (user-specific)
+*.mmdb
+suricata_rules/autodefender_blocks.json*
+suricata_rules/*.tmp
 
 # Environment and secrets files
 .env

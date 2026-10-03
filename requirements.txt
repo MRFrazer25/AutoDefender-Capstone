@@ -5,3 +5,5 @@ python-dateutil
 streamlit
 plotly
 pandas
+httpx
+geoip2

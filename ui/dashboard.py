@@ -51,12 +51,13 @@ class ThreatPanel:
             if len(source_ip) > 16:
                 source_ip = source_ip[:13] + "..."
             
+            # Plain Text cells so log-derived values are never parsed as Rich markup
             table.add_row(
                 time_str,
                 Text(threat.severity, style=severity_style),
-                threat.event_type[:15],
-                source_ip,
-                desc
+                Text(threat.event_type[:15]),
+                Text(source_ip),
+                Text(desc)
             )
         
         if not threats:
@@ -68,30 +69,6 @@ class ThreatPanel:
             border_style="blue"
         )
     
-    def render_detailed(self, threat: Threat) -> Panel:
-        """Render detailed threat information."""
-        content = Text()
-        
-        content.append("Threat Details\n", style="bold")
-        content.append(f"ID: {threat.id}\n", style="dim")
-        content.append(f"Timestamp: {threat.timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        content.append(f"Type: {threat.event_type}\n")
-        content.append("Severity: ", style="bold")
-        content.append(f"{threat.severity}\n", style=self.SEVERITY_COLORS.get(threat.severity, 'white'))
-        content.append(f"Source IP: {threat.source_ip or 'Unknown'}\n")
-        content.append(f"Destination IP: {threat.dest_ip or 'Unknown'}\n")
-        if threat.dest_port:
-            content.append(f"Destination Port: {threat.dest_port}\n")
-        content.append(f"\nDescription:\n{threat.description}\n", style="dim")
-        
-        if threat.ai_explanation:
-            content.append(f"\nAI Explanation:\n{threat.ai_explanation}\n", style="cyan")
-        
-        return Panel(
-            content,
-            title=f"[bold]Threat #{threat.id}[/bold]",
-            border_style=self.SEVERITY_COLORS.get(threat.severity, 'white')
-        )
 
 
 class StatsPanel:
@@ -131,23 +108,6 @@ class StatsPanel:
             border_style="green"
         )
     
-    def render_table(self, stats: DetectionStats) -> Panel:
-        """Render statistics as a table."""
-        table = Table(show_header=True, header_style="bold", box=None)
-        table.add_column("Metric", style="bold")
-        table.add_column("Value", justify="right")
-        
-        table.add_row("Total Threats", str(stats.total_threats))
-        table.add_row("Critical", str(stats.by_severity.get('CRITICAL', 0)), style="bold red")
-        table.add_row("High", str(stats.by_severity.get('HIGH', 0)), style="red")
-        table.add_row("Medium", str(stats.by_severity.get('MEDIUM', 0)), style="yellow")
-        table.add_row("Low", str(stats.by_severity.get('LOW', 0)), style="green")
-        
-        return Panel(
-            table,
-            title="[bold]Statistics[/bold]",
-            border_style="green"
-        )
 
 
 class Dashboard:
@@ -249,7 +209,7 @@ class Dashboard:
             if len(pending_actions) > 5:
                 content.append(f"\n...and {len(pending_actions) - 5} more", style="dim")
             
-            content.append("\n[dim]Note: Use CLI to approve/reject pending actions[/dim]")
+            content.append("\nNote: Use CLI to approve/reject pending actions", style="dim")
         
         return Panel(content, title="[bold yellow][!] Pending Agentic Actions[/bold yellow]", border_style="yellow")
     

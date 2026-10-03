@@ -7,6 +7,7 @@ import logging
 from typing import Optional, Callable
 from models import Action
 from rich.console import Console
+from rich.markup import escape
 from rich.prompt import Confirm
 from rich.panel import Panel
 
@@ -99,17 +100,17 @@ class ApprovalHandler:
         """Build approval prompt message."""
         lines = []
         
-        # Action info
-        lines.append(f"[bold]Action Type:[/bold] {action.action_type}")
+        # Action info (descriptions come from log data, so escape Rich markup)
+        lines.append(f"[bold]Action Type:[/bold] {escape(action.action_type)}")
         if action.action_type == 'SURICATA_DROP_RULE':
             lines.append("[bold]Proposed Rule:[/bold]")
-            lines.append(f"[green]{action.description}[/green]")
+            lines.append(f"[green]{escape(action.description)}[/green]")
         else:
-            lines.append(f"[bold]Description:[/bold] {action.description}")
-        
+            lines.append(f"[bold]Description:[/bold] {escape(action.description)}")
+
         # Threat context
         if threat_description:
-            lines.append(f"\n[bold]Threat:[/bold] {threat_description}")
+            lines.append(f"\n[bold]Threat:[/bold] {escape(threat_description)}")
         
         # Timestamp
         lines.append(f"\n[dim]Requested at: {action.timestamp.strftime('%Y-%m-%d %H:%M:%S')}[/dim]")
@@ -177,29 +178,4 @@ class ApprovalHandler:
         
         return results
     
-    def display_pending_actions(self, actions: list[Action]):
-        """
-        Display list of pending actions.
-        
-        Args:
-            actions: List of pending actions
-        """
-        if not actions:
-            self.console.print("[dim]No pending actions[/dim]")
-            return
-        
-        self.console.print(f"\n[bold cyan]Pending Actions ({len(actions)}):[/bold cyan]")
-        
-        for i, action in enumerate(actions, 1):
-            status_color = {
-                'RECOMMENDED': 'yellow',
-                'APPROVED': 'green',
-                'REJECTED': 'red',
-                'EXECUTED': 'blue'
-            }.get(action.status, 'white')
-            
-            self.console.print(
-                f"  {i}. [{status_color}]{action.status}[/{status_color}] "
-                f"- {action.action_type}: {action.description[:80]}"
-            )
 

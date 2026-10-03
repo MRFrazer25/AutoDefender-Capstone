@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 from models import Threat
+from parser import to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,14 @@ class ThreatFilter:
         if dest_ip:
             filtered = [t for t in filtered if t.dest_ip and dest_ip in t.dest_ip]
         
+        # Threat timestamps are UTC-aware; naive filter times are treated as UTC
         if start_time:
-            filtered = [t for t in filtered if t.timestamp and t.timestamp >= start_time]
+            start_time = to_utc(start_time)
+            filtered = [t for t in filtered if t.timestamp and to_utc(t.timestamp) >= start_time]
         
         if end_time:
-            filtered = [t for t in filtered if t.timestamp and t.timestamp <= end_time]
+            end_time = to_utc(end_time)
+            filtered = [t for t in filtered if t.timestamp and to_utc(t.timestamp) <= end_time]
         
         if has_ai_explanation is not None:
             if has_ai_explanation:

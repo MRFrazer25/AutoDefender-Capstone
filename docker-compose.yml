@@ -1,0 +1,55 @@
+# AutoDefender + Ollama + a log replayer that feeds the sample Suricata log.
+#
+#   cp .env.example .env            # then set AUTODEFENDER_UI_PASSWORD
+#   docker compose up -d --build
+#   docker compose exec ollama ollama pull phi4-mini
+#   open http://localhost:8501      # Log path: /var/log/suricata/eve.json
+#
+# To watch a real Suricata on a Linux host instead of the replayer, remove the
+# "replayer" service and replace the "suricata-logs" volume on "autodefender" with:
+#   - /var/log/suricata:/var/log/suricata:ro
+
+services:
+  autodefender:
+    build: .
+    env_file: .env
+    environment:
+      OLLAMA_ENDPOINT: http://ollama:11434
+      OLLAMA_MODEL: phi4-mini
+    ports:
+      - "127.0.0.1:8501:8501"   # Only reachable from this machine
+    volumes:
+      - autodefender-data:/data
+      - suricata-logs:/var/log/suricata:ro
+    depends_on:
+      - ollama
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    # No published ports: only the autodefender container can reach it
+    restart: unless-stopped
+
+  replayer:
+    build: .
+    command: >
+      python demo/log_replayer.py demo/example_suricata_log.json
+      --target /var/log/suricata/eve.json --interval 2 --loop
+    volumes:
+      - suricata-logs:/var/log/suricata
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+volumes:
+  autodefender-data:
+  suricata-logs:
+  ollama-models:

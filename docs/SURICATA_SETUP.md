@@ -131,7 +131,7 @@ The file should exist and the `LastWriteTime` (or modification time) should be r
 
 **Windows PowerShell:**
 ```powershell
-cd "C:\Users\<your-username>\AutoDefender_Hackathon"
+cd "C:\Users\<your-username>\AutoDefender-Capstone"
 
 $env:SURICATA_ENABLED = "true"
 $env:SURICATA_DRY_RUN = "true"  # Safe testing - won't write real rules
@@ -141,7 +141,7 @@ $env:OLLAMA_MODEL = "phi4-mini"
 
 **Linux/Mac:**
 ```bash
-cd ~/AutoDefender_Hackathon
+cd ~/AutoDefender-Capstone
 
 export SURICATA_ENABLED=true
 export SURICATA_DRY_RUN=true

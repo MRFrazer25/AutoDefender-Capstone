@@ -3,16 +3,18 @@
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import json
 import sys
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
-from database import Database
-from models import Threat, Action
-from ai_explainer import AIExplainer
-from config import Config
+from database import Database  # noqa: E402
+from models import Threat, Action  # noqa: E402
+from ai_explainer import AIExplainer  # noqa: E402
+from config import Config  # noqa: E402
+from tools.check_demo_data import check_geo, real_asns, real_ips  # noqa: E402
 
 
 def main() -> None:
@@ -29,7 +31,7 @@ def main() -> None:
         print(f"Using default model: {config.ollama_model}")
     explainer = AIExplainer(config)
     
-    if not explainer.client:
+    if not explainer.connected:
         print("WARNING: Ollama is not available. Threats will be created without AI explanations.")
         print("Start Ollama with 'ollama serve' and ensure the model is available.")
         use_ai = False
@@ -139,6 +141,16 @@ def main() -> None:
         },
     ]
 
+    # Never seed real-world data: only private/documentation IPs and "Example ..." organizations
+    sample_text = json.dumps(threats_data, default=str)
+    real = real_ips(sample_text) | real_asns(sample_text)
+    fake_orgs_only = all(
+        not check_geo(json.dumps({"geo_context": (t.get("metadata") or {}).get("geo_context")}))
+        for t in threats_data
+    )
+    if real or not fake_orgs_only:
+        sys.exit(f"Refusing to seed real-world data: {sorted(real) or 'real organization names'}")
+
     # Create Threat objects and generate AI explanations
     print("\nGenerating AI explanations for threats...")
     threats = []
@@ -228,7 +240,7 @@ def main() -> None:
         Action(
             threat_id=threat_ids[3],
             action_type="SURICATA_DROP_RULE",
-            description="Block data exfiltration: Add Suricata drop rule for 198.51.100.200 (Azure/OneDrive)",
+            description="Block data exfiltration: Add Suricata drop rule for 198.51.100.200 (cloud/cloud storage)",
             status="RECOMMENDED",
             timestamp=now - timedelta(hours=7, minutes=30),
         ),

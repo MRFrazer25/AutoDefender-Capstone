@@ -5,18 +5,25 @@ Shows threat analysis, AI explanations, filtering, export, and IP management.
 """
 
 import json
+import sys
 from pathlib import Path
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from analyzer import HistoricalAnalyzer
-from config import Config
-from exporter import Exporter
-from ip_manager import IPManager
-
 BASE_DIR = Path(__file__).resolve().parent
+# Allow running as "python demo/demo.py" from the project root
+if str(BASE_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR.parent))
+
+from analyzer import HistoricalAnalyzer  # noqa: E402
+from config import Config  # noqa: E402
+from exporter import threats_to_csv, threats_to_json  # noqa: E402
+from filter import ThreatFilter  # noqa: E402
+from ip_manager import IPManager  # noqa: E402
+
 OUTPUT_DIR = BASE_DIR / "outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
 TEMP_DIR = BASE_DIR / "generated"
@@ -118,6 +125,10 @@ def run_demo() -> None:
     demo_file = create_demo_log_file()
     console.print("\n[bold]Analyzing threats...[/bold]")
     config = Config.get_default()
+    # Use a throwaway database so the demo never touches your real autodefender.db
+    demo_db = TEMP_DIR / "demo_run.db"
+    demo_db.unlink(missing_ok=True)
+    config.db_path = str(demo_db)
     analyzer = HistoricalAnalyzer(config)
 
     with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as progress:
@@ -128,8 +139,6 @@ def run_demo() -> None:
     console.print(f"[green][OK][/green] Detected {len(threats)} threats")
 
     console.print("\nFiltering for high-severity threats...")
-    from filter import ThreatFilter  # Imported lazily to keep scope tight
-
     filter_obj = ThreatFilter()
     high_critical = filter_obj.filter_by_severity_list(threats, ["HIGH", "CRITICAL"])
     console.print(f"[green][OK][/green] Found {len(high_critical)} HIGH/CRITICAL threats")
@@ -146,11 +155,10 @@ def run_demo() -> None:
     console.print(f"[green][OK][/green] Found {len(ssh_threats)} SSH-related threats")
 
     console.print("\nExporting results to JSON and CSV...")
-    exporter = Exporter(analyzer.database)
     json_path = OUTPUT_DIR / "demo_threats.json"
     csv_path = OUTPUT_DIR / "demo_threats.csv"
-    exporter.export_threats_json(threats, str(json_path))
-    exporter.export_threats_csv(threats, str(csv_path))
+    json_path.write_text(threats_to_json(threats), encoding="utf-8")
+    csv_path.write_text(threats_to_csv(threats), encoding="utf-8", newline="")
     console.print(f"[green][OK][/green] Wrote {json_path.relative_to(BASE_DIR)}")
     console.print(f"[green][OK][/green] Wrote {csv_path.relative_to(BASE_DIR)}")
 
@@ -162,7 +170,7 @@ def run_demo() -> None:
     console.print("[green][OK][/green] Demo IP lists updated")
 
     console.print("\nSummary of demo results")
-    summary_panel = Panel(analyzer.get_summary(), title="Demo Results", border_style="green")
+    summary_panel = Panel(escape(analyzer.get_summary()), title="Demo Results", border_style="green")
     console.print(summary_panel)
 
     console.print("\nCleaning up temporary files...")
@@ -173,6 +181,7 @@ def run_demo() -> None:
         console.print(f"[yellow]Warning:[/yellow] Could not remove temporary files: {exc}")
 
     analyzer.close()
+    demo_db.unlink(missing_ok=True)
     console.print("\nDemo complete. Review files in the demo/outputs directory for exports.\n")
 
 
@@ -181,9 +190,6 @@ if __name__ == "__main__":
         run_demo()
     except KeyboardInterrupt:
         console.print("\nDemo interrupted by user")
-    except Exception as exc:
-        console.print(f"\nError: {exc}")
-        import traceback
-
-        traceback.print_exc()
+    except Exception:
+        console.print_exception()
 

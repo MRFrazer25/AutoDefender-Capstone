@@ -2,21 +2,15 @@
 
 import pandas as pd
 import streamlit as st
-import re
 
-from config import Config
 from database import Database
-from ip_manager import IPManager
-from utils.path_utils import sanitize_path
+from ip_manager import IPManager, normalize_ip
+from streamlit_pages.session_config import config_from_session, record
 
 
 def is_valid_ip(ip: str) -> bool:
-    """Validate IPv4 address format."""
-    pattern = r"^(\d{1,3}\.){3}\d{1,3}$"
-    if not re.match(pattern, ip):
-        return False
-    parts = ip.split(".")
-    return all(0 <= int(part) <= 255 for part in parts)
+    """Validate an IPv4 or IPv6 address."""
+    return normalize_ip(ip) is not None
 
 
 def show() -> None:
@@ -28,14 +22,11 @@ def show() -> None:
     )
 
     ip_manager = IPManager()
-    config = Config.get_default()
     try:
-        db_path_value = st.session_state.get("db_path", config.db_path)
-        db_path = sanitize_path(db_path_value)
+        db = Database(config_from_session().db_path)
     except ValueError as exc:
-        st.error(f"Invalid database path: {exc}")
+        st.error(f"Invalid path in current settings: {exc}")
         return
-    db = Database(db_path)
 
     col1, col2 = st.columns(2)
 
@@ -55,6 +46,7 @@ def show() -> None:
                 elif not is_valid_ip(new_ip):
                     st.error("The IP address format is invalid.")
                 elif ip_manager.add_whitelist(new_ip):
+                    record("whitelist_added", {"ip": new_ip})
                     st.success(f"Added {new_ip} to the whitelist.")
                     st.rerun()
                 else:
@@ -71,6 +63,7 @@ def show() -> None:
                 with row_col2:
                     if st.button("Remove", key=f"remove_whitelist_{ip_value}"):
                         ip_manager.remove_whitelist(ip_value)
+                        record("whitelist_removed", {"ip": ip_value})
                         st.success(f"Removed {ip_value} from the whitelist.")
                         st.rerun()
         else:
@@ -92,6 +85,7 @@ def show() -> None:
                 elif not is_valid_ip(new_ip):
                     st.error("The IP address format is invalid.")
                 elif ip_manager.add_blacklist(new_ip):
+                    record("blacklist_added", {"ip": new_ip})
                     st.success(f"Added {new_ip} to the blacklist.")
                     st.rerun()
                 else:
@@ -108,6 +102,7 @@ def show() -> None:
                 with row_col2:
                     if st.button("Remove ", key=f"remove_blacklist_{ip_value}"):
                         ip_manager.remove_blacklist(ip_value)
+                        record("blacklist_removed", {"ip": ip_value})
                         st.success(f"Removed {ip_value} from the blacklist.")
                         st.rerun()
         else:
@@ -135,7 +130,7 @@ def show() -> None:
 
                 if invalid:
                     st.warning(
-                        "Skipped the following invalid IPs: " + ", ".join(invalid)
+                        f"Skipped {len(invalid)} invalid IP address(es)."
                     )
 
                 added = 0
@@ -147,6 +142,7 @@ def show() -> None:
                         if ip_manager.add_blacklist(ip):
                             added += 1
 
+                record("ip_list_imported", {"list": destination.lower(), "added": added})
                 st.success(f"Imported {added} IP addresses into the {destination.lower()}.")
                 st.rerun()
 
@@ -231,16 +227,21 @@ def show() -> None:
 
         with quick_col2:
             col_whitelist, col_blacklist = st.columns(2)
+            if not is_valid_ip(selected_ip):
+                st.caption("This source is not a valid IP address and can't be listed.")
+                selected_ip = None
             with col_whitelist:
-                if st.button("Add to whitelist", use_container_width=True):
+                if selected_ip and st.button("Add to whitelist", use_container_width=True):
                     if ip_manager.add_whitelist(selected_ip):
+                        record("whitelist_added", {"ip": selected_ip})
                         st.success(f"Added {selected_ip} to the whitelist.")
                         st.rerun()
                     else:
                         st.warning("Already on the whitelist.")
             with col_blacklist:
-                if st.button("Add to blacklist", use_container_width=True):
+                if selected_ip and st.button("Add to blacklist", use_container_width=True):
                     if ip_manager.add_blacklist(selected_ip):
+                        record("blacklist_added", {"ip": selected_ip})
                         st.success(f"Added {selected_ip} to the blacklist.")
                         st.rerun()
                     else:

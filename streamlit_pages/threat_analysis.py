@@ -1,32 +1,28 @@
 """Threat analysis page with filtering and export."""
 
-import os
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from config import Config
 from database import Database
-from exporter import Exporter
+from exporter import threats_to_csv, threats_to_json
 from filter import ThreatFilter
-from utils.path_utils import sanitize_path, sanitize_filename
+from mitre import technique_labels
+from streamlit_pages.session_config import config_from_session, record
+from utils.path_utils import sanitize_filename
 
 
 def show() -> None:
     """Display the threat analysis view."""
     st.markdown('<div class="main-header">Threat Analysis</div>', unsafe_allow_html=True)
 
-    config = Config.get_default()
     try:
-        db_path_value = st.session_state.get("db_path", config.db_path)
-        db_path = sanitize_path(db_path_value)
+        db = Database(config_from_session().db_path)
     except ValueError as exc:
-        st.error(f"Invalid database path: {exc}")
+        st.error(f"Invalid path in current settings: {exc}")
         return
-    db = Database(db_path)
     threat_filter = ThreatFilter()
 
     st.subheader("Filter options")
@@ -67,13 +63,13 @@ def show() -> None:
                 value=datetime.now() - timedelta(days=7),
             )
             start_time = st.time_input("Start time", value=datetime.min.time())
-            start_datetime = datetime.combine(start_date, start_time)
+            start_datetime = datetime.combine(start_date, start_time).astimezone()
 
     with date_col2:
         if use_date_filter:
             end_date = st.date_input("End date", value=datetime.now())
             end_time = st.time_input("End time", value=datetime.max.time())
-            end_datetime = datetime.combine(end_date, end_time)
+            end_datetime = datetime.combine(end_date, end_time).astimezone()
 
     ip_col1, ip_col2 = st.columns(2)
 
@@ -170,6 +166,7 @@ def show() -> None:
                         "Destination IP": threat.dest_ip or "N/A",
                         "Port": threat.dest_port if threat.dest_port else "N/A",
                         "Description": threat.description,
+                        "ATT&CK": technique_labels(threat),
                         "AI explanation": "Available"
                         if threat.ai_explanation
                         else "Missing",
@@ -192,46 +189,20 @@ def show() -> None:
                     placeholder="Example: threats_export",
                 )
 
-            if st.button("Export"):
-                exporter = Exporter(db)
-                safe_name = sanitize_filename(export_filename) or sanitize_filename(
-                    f"threats_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                )
-                filename = f"{safe_name}.{export_format.lower()}"
-                try:
-                    if export_format == "CSV":
-                        success = exporter.export_threats_csv(threats, filename)
-                    else:
-                        success = exporter.export_threats_json(threats, filename)
-
-                    if success:
-                        # Get the actual path from exporter for download
-                        from exporter import EXPORTS_DIR
-                        safe_export_path = os.path.join(EXPORTS_DIR, filename)
-                        # Validate path is within exports directory
-                        exports_dir_normalized = os.path.abspath(os.path.normpath(EXPORTS_DIR))
-                        safe_export_path_normalized = os.path.abspath(os.path.normpath(safe_export_path))
-                        if not safe_export_path_normalized.startswith(exports_dir_normalized + os.sep):
-                            st.error("Export path validation failed")
-                            return
-                        st.success(
-                            f"Exported {len(threats)} threats to {filename}."
-                        )
-                        with open(safe_export_path_normalized, "r", encoding="utf-8") as handle:
-                            st.download_button(
-                                label=f"Download {export_format}",
-                                data=handle.read(),
-                                file_name=os.path.basename(safe_export_path),
-                                mime=(
-                                    "application/json"
-                                    if export_format == "JSON"
-                                    else "text/csv"
-                                ),
-                            )
-                    else:
-                        st.error("Export failed.")
-                except Exception as exc:
-                    st.error(f"Export error: {exc}")
+            safe_name = sanitize_filename(export_filename, default="threats_export")
+            # Built in memory, so no copy of the threat data is left on the server
+            if export_format == "CSV":
+                export_data, mime = threats_to_csv(threats), "text/csv"
+            else:
+                export_data, mime = threats_to_json(threats), "application/json"
+            st.download_button(
+                label=f"Download {len(threats)} threats as {export_format}",
+                data=export_data,
+                file_name=f"{safe_name}.{export_format.lower()}",
+                mime=mime,
+                on_click=record,
+                args=("threats_exported", {"format": export_format, "count": len(threats)}),
+            )
 
         with tab2:
             chart_col1, chart_col2 = st.columns(2)
