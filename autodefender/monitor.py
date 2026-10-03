@@ -20,7 +20,10 @@ from autodefender.config import Config
 from autodefender.database import Database
 from autodefender.detector import ThreatDetector
 from autodefender.models import Threat, Action
-from autodefender.parser import SuricataParser
+from autodefender.parser import MAX_EVENT_LENGTH, SuricataParser
+
+# Bound how much of a growing log we pull into memory on each pass
+READ_CHUNK_SIZE = 4 * 1024 * 1024
 from autodefender.suricata_manager import SuricataManager
 from autodefender.utils.geoip import enrich_threat_context
 
@@ -47,6 +50,8 @@ class SuricataLogHandler(FileSystemEventHandler):
         self.last_position = 0
         self.start_from_beginning = start_from_beginning
         self._read_lock = threading.Lock()
+        self._partial = b""
+        self._skip_rest_of_line = False
         self._initialize_position()
     
     def _initialize_position(self):
@@ -97,6 +102,8 @@ class SuricataLogHandler(FileSystemEventHandler):
                 if current_size < self.last_position:
                     logger.info(f"Log file {self.file_path} was rotated or truncated; reading from the start")
                     self.last_position = 0
+                    self._partial = b""
+                    self._skip_rest_of_line = False
                 
                 # Check if file actually grew
                 if current_size == self.last_position:
@@ -104,18 +111,32 @@ class SuricataLogHandler(FileSystemEventHandler):
                 
                 with open(self.file_path, 'rb') as f:
                     f.seek(self.last_position)
-                    data = f.read(current_size - self.last_position)
-                
-                # Only consume up to the last complete line
-                end = data.rfind(b'\n')
-                if end == -1:
-                    return
-                self.last_position += end + 1
-
-                for raw_line in data[:end].split(b'\n'):
-                    line = raw_line.decode('utf-8', errors='replace').strip()
-                    if line:
-                        self.callback(line)
+                    while True:
+                        chunk = f.read(READ_CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        self.last_position += len(chunk)
+                        data = self._partial + chunk
+                        if self._skip_rest_of_line:
+                            newline = data.find(b'\n')
+                            if newline == -1:
+                                self._partial = b""
+                                continue
+                            data = data[newline + 1:]
+                            self._skip_rest_of_line = False
+                        parts = data.split(b'\n')
+                        self._partial = parts.pop()
+                        if len(self._partial) > MAX_EVENT_LENGTH:
+                            logger.warning(
+                                "Discarding oversized unterminated log line (%s bytes)",
+                                len(self._partial),
+                            )
+                            self._partial = b""
+                            self._skip_rest_of_line = True
+                        for raw_line in parts:
+                            line = raw_line.decode('utf-8', errors='replace').strip()
+                            if line:
+                                self.callback(line)
             
             except Exception as e:
                 logger.error(f"Error reading new lines from {self.file_path}: {e}", exc_info=True)

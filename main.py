@@ -249,6 +249,7 @@ def analyze_mode(config: Config, file_paths: list,
     threat_filter = ThreatFilter()
     
     # Determine if paths are files or directories
+    all_threats = []
     paths_to_analyze = []
     for path_str in valid_paths:
         path = Path(path_str)
@@ -256,29 +257,29 @@ def analyze_mode(config: Config, file_paths: list,
             paths_to_analyze.append(str(path))
         elif path.is_dir():
             try:
-                # Analyze all JSON files in directory (results stored in database)
-                _ = analyzer.analyze_directory(str(path), generate_explanations=False)
+                all_threats.extend(analyzer.analyze_directory(str(path), generate_explanations=False))
                 console.print(f"[green][OK][/green] Analyzed directory: {path}")
             except Exception as e:
                 console.print(f"[red][X][/red] Error analyzing directory {path}: {e}")
                 logger.exception(f"Error analyzing directory {path}")
     
     # Analyze files
-    all_threats = []
     if paths_to_analyze:
         console.print(f"[cyan]Analyzing {len(paths_to_analyze)} file(s)...[/cyan]")
         try:
-            all_threats = analyzer.analyze_files(paths_to_analyze, generate_explanations=False)
-            console.print(f"[green][OK][/green] Analysis complete: {len(all_threats)} threats detected")
+            file_threats = analyzer.analyze_files(paths_to_analyze, generate_explanations=False)
+            console.print(f"[green][OK][/green] Analysis complete: {len(file_threats)} threats detected")
+            all_threats.extend(file_threats)
         except Exception as e:
             console.print(f"[red]Error:[/red] Failed to analyze files: {e}")
             console.print("[yellow]Hint:[/yellow] Check file permissions and JSON format")
             analyzer.close()
             sys.exit(1)
     
-    # Get all threats from database if we have any
+    # Filters, AI explanations, and exports only ever use threats from these paths
     if not all_threats:
-        all_threats = analyzer.database.get_threats(limit=1000)
+        console.print("[yellow]No threats were found in the analyzed paths.[/yellow] "
+                      "Nothing to filter or export; earlier threats in the database are not included.")
     
     # Apply filters
     filtered_threats = all_threats
@@ -296,7 +297,7 @@ def analyze_mode(config: Config, file_paths: list,
         console.print(f"[cyan]Generating AI explanations for {', '.join(ai_severities)} severity threats...[/cyan]")
         threats_to_analyze = threat_filter.filter_by_severity_list(filtered_threats, ai_severities)
         try:
-            analyzer.generate_ai_explanations(threats_to_analyze, use_ai=True)
+            analyzer.generate_ai_explanations(threats_to_analyze, use_ai=True, ai_severities=ai_severities)
         except Exception as e:
             console.print(f"[yellow]Warning:[/yellow] Some AI explanations failed: {e}")
             console.print("[yellow]Hint:[/yellow] Make sure Ollama is running and the model is available")
@@ -306,11 +307,14 @@ def analyze_mode(config: Config, file_paths: list,
                 updated = analyzer.database.get_threat(threat.id)
                 if updated:
                     threat.ai_explanation = updated.ai_explanation
-    elif len(filtered_threats) <= 20:
+    elif 0 < len(filtered_threats) <= 20:
         # If few threats, analyze all with AI
         console.print(f"[cyan]Generating AI explanations for all {len(filtered_threats)} threats...[/cyan]")
         try:
-            analyzer.generate_ai_explanations(filtered_threats, use_ai=True)
+            analyzer.generate_ai_explanations(
+                filtered_threats, use_ai=True,
+                ai_severities=["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+            )
         except Exception as e:
             console.print(f"[yellow]Warning:[/yellow] Some AI explanations failed: {e}")
             console.print("[yellow]Hint:[/yellow] Make sure Ollama is running and the model is available")
@@ -321,8 +325,8 @@ def analyze_mode(config: Config, file_paths: list,
                 if updated:
                     filtered_threats[i] = updated
     
-    # Generate and display report
-    summary = analyzer.get_summary()
+    # Generate and display report (this run only; never older database rows)
+    summary = analyzer.get_summary(filtered_threats)
     
     console.print()
     console.print(Panel(escape(summary), title="[bold]Analysis Report[/bold]", border_style="green"))

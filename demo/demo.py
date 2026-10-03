@@ -170,7 +170,7 @@ def run_demo() -> None:
     console.print("[green][OK][/green] Demo IP lists updated")
 
     console.print("\nSummary of demo results")
-    summary_panel = Panel(escape(analyzer.get_summary()), title="Demo Results", border_style="green")
+    summary_panel = Panel(escape(analyzer.get_summary(threats)), title="Demo Results", border_style="green")
     console.print(summary_panel)
 
     console.print("\nCleaning up temporary files...")

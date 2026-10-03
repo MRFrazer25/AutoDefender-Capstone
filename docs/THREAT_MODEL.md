@@ -36,7 +36,7 @@ On Linux/macOS the databases and CLI exports are created readable by the current
 
 | Risk | Control |
 | --- | --- |
-| Someone else opens the console and approves rules | Required password (12+ characters, no example values), localhost binding, lockout after 5 failures per 5 minutes that survives restarts, 30-minute idle sign-out, sign-out when the password changes |
+| Someone else opens the console and approves rules | Required password (12+ characters, no example values), localhost binding, per-client lockout after 5 failures per 5 minutes (survives restarts) plus a global backoff that never hard-locks the operator, 30-minute idle sign-out, sign-out when the password changes |
 | Malicious log data tricks the AI into a harmful rule (prompt injection) | Log data is fenced off as untrusted in prompts; AI rules must be exactly one `drop` rule for the threat's own source IP; `any`, loopback, and whitelisted IPs are refused |
 | Rule file corruption or injected extra rules | Rules are rebuilt from validated parts on one line, SIDs assigned by AutoDefender, backups before every change |
 | Log data or AI output rendered as links/HTML in the console | All untrusted text is escaped before display; terminal output escapes Rich markup |

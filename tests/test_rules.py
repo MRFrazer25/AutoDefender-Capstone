@@ -1,5 +1,6 @@
 """Suricata rule safety, active blocks, unblocking, and expiry."""
 
+import threading
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -101,3 +102,38 @@ def test_reload_without_suricatasc(manager, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda name: None)
     ok, message = manager.reload_rules()
     assert not ok and "not installed" in message
+
+
+def test_same_second_backups_are_unique(manager):
+    manager.add_custom_rule(build_drop_rule("203.0.113.81", "first"))
+    names = [manager.backup_rules_file().name for _ in range(3)]
+    assert len(set(names)) == 3
+
+
+def test_two_managers_do_not_reuse_sids(tmp_path):
+    config = Config()
+    config.SURICATA_ENABLED = True
+    config.SURICATA_RULES_DIR = str(tmp_path / "rules")
+    config.SURICATA_DRY_RUN = False
+    first = SuricataManager(config)
+    second = SuricataManager(config)
+    errors = []
+
+    def write(manager, offset):
+        try:
+            for i in range(8):
+                manager.add_custom_rule(build_drop_rule(f"198.51.100.{offset + i}", "race"))
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=write, args=(first, 1)),
+        threading.Thread(target=write, args=(second, 20)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert not errors
+    sids = [block["sid"] for block in first.list_blocks()]
+    assert len(sids) == len(set(sids)) == 16

@@ -9,9 +9,16 @@ import pytest
 
 from autodefender import audit
 from autodefender.incidents import group_incidents
+from autodefender.login_lockout import (
+    GLOBAL_BACKOFF_AFTER,
+    failures_for_client,
+    global_backoff,
+    lockout_remaining,
+)
 from autodefender.mitre import techniques_for
 from autodefender.models import Threat
 from autodefender.utils import geoip
+from streamlit_pages.dashboard import apply_threat_filters
 from tools import check_demo_data
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -100,6 +107,42 @@ def test_geoip_is_offline_and_optional(monkeypatch):
     assert context["isp"] == "Example Hosting" and context["as_number"] == "AS64500"
     assert geoip.get_ip_context("10.0.0.1") is None  # Private IPs are never looked up
     geoip.get_ip_context.cache_clear()
+
+
+def test_lockout_is_per_client_and_global_backoff_is_soft():
+    now = 1_000_000.0
+    attacker = [now - i for i in range(5)]
+    assert lockout_remaining(attacker, now) > 0
+    assert lockout_remaining([], now) == 0
+    assert global_backoff([now] * GLOBAL_BACKOFF_AFTER, now) == 0.0
+    assert 0 < global_backoff([now] * (GLOBAL_BACKOFF_AFTER + 1), now) <= 8.0
+
+    entries = [
+        {"action": "sign_in_failed", "timestamp": datetime.fromtimestamp(now - 10, tz=timezone.utc),
+         "details": {"client": "203.0.113.10"}},
+        {"action": "sign_in_failed", "timestamp": datetime.fromtimestamp(now - 9, tz=timezone.utc),
+         "details": {"client": "203.0.113.10"}},
+        {"action": "sign_in_failed", "timestamp": datetime.fromtimestamp(now - 8, tz=timezone.utc),
+         "details": {"client": "198.51.100.20"}},
+        {"action": "sign_in", "timestamp": datetime.fromtimestamp(now - 7, tz=timezone.utc),
+         "details": {"client": "203.0.113.10"}},
+        {"action": "sign_in_failed", "timestamp": datetime.fromtimestamp(now - 6, tz=timezone.utc),
+         "details": {"client": "203.0.113.10"}},
+    ]
+    assert len(failures_for_client(entries, "203.0.113.10")) == 1
+    assert len(failures_for_client(entries, "198.51.100.20")) == 1
+
+
+def test_dashboard_filters_before_limit():
+    threats = [
+        threat("noise", ip="203.0.113.1", severity="LOW"),
+        threat("noise", ip="203.0.113.2", severity="LOW"),
+        threat("SSH scan", ip="198.51.100.9", severity="HIGH"),
+    ]
+    shown = apply_threat_filters(threats, ["HIGH"], "198.51.100.9", limit=1)
+    assert len(shown) == 1 and shown[0].source_ip == "198.51.100.9"
+    empty = apply_threat_filters(threats[:2], ["HIGH"], "", limit=1)
+    assert empty == []
 
 
 def test_real_data_checker():

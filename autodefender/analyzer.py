@@ -132,14 +132,36 @@ class HistoricalAnalyzer:
         
         return self.analyze_files([str(f) for f in json_files], generate_explanations)
     
-    def generate_report(self) -> dict:
+    @staticmethod
+    def _stats_from_threats(threats: List[Threat]) -> dict:
+        """Build report statistics from this analysis run only (never the whole database)."""
+        by_severity = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
+        by_type: dict = {}
+        by_source: dict = {}
+        for threat in threats:
+            if threat.severity in by_severity:
+                by_severity[threat.severity] += 1
+            by_type[threat.event_type] = by_type.get(threat.event_type, 0) + 1
+            if threat.source_ip:
+                by_source[threat.source_ip] = by_source.get(threat.source_ip, 0) + 1
+        top_sources = sorted(by_source.items(), key=lambda item: item[1], reverse=True)[:10]
+        return {
+            'total': len(threats),
+            'by_severity': by_severity,
+            'by_type': by_type,
+            'top_sources': top_sources,
+        }
+
+    def generate_report(self, threats: Optional[List[Threat]] = None) -> dict:
         """
         Generate analysis report.
         
-        Returns:
-            Dictionary with analysis results and statistics
+        Args:
+            threats: Threats from this run. When omitted, statistics come from
+                this analyzer's counters plus an empty breakdown (never older
+                database rows from a previous run).
         """
-        stats = self.database.get_stats()
+        stats = self._stats_from_threats(threats or [])
         parser_stats = self.parser.get_stats()
         
         report = {
@@ -147,29 +169,25 @@ class HistoricalAnalyzer:
             'events_processed': self.events_processed,
             'threats_detected': self.threats_detected,
             'parser_stats': parser_stats,
-            'threat_statistics': {
-                'total': stats.total_threats,
-                'by_severity': stats.by_severity,
-                'by_type': stats.by_type,
-                'top_sources': stats.top_sources
-            }
+            'threat_statistics': stats,
         }
         
         return report
     
-    def get_summary(self) -> str:
+    def get_summary(self, threats: Optional[List[Threat]] = None) -> str:
         """
         Get a text summary of the analysis.
         
-        Returns:
-            Formatted summary string
+        Args:
+            threats: Threats from this run. Samples and counts use only this
+                list so an empty file cannot surface older database threats.
         """
-        report = self.generate_report()
+        analyzed = threats if threats is not None else []
+        report = self.generate_report(analyzed)
         stats = report['threat_statistics']
         
-        # Get sample AI explanations for high-severity threats
-        high_threats = self.database.get_threats(limit=5, severity='HIGH')
-        critical_threats = self.database.get_threats(limit=3, severity='CRITICAL')
+        high_threats = [t for t in analyzed if t.severity == 'HIGH'][:5]
+        critical_threats = [t for t in analyzed if t.severity == 'CRITICAL'][:3]
         
         summary = f"""
 Analysis Summary
@@ -220,13 +238,15 @@ Threat Types:
         
         return summary
     
-    def generate_ai_explanations(self, threats: List[Threat], use_ai: bool = True) -> List[Threat]:
+    def generate_ai_explanations(self, threats: List[Threat], use_ai: bool = True,
+                                 ai_severities: Optional[List[str]] = None) -> List[Threat]:
         """
         Generate AI explanations for selected threats.
         
         Args:
             threats: List of threats to generate explanations for
             use_ai: Whether to use AI (True) or fallback (False)
+            ai_severities: Severities to explain with AI (default: HIGH and CRITICAL)
             
         Returns:
             List of threats with AI explanations added
@@ -234,7 +254,9 @@ Threat Types:
         for threat in threats:
             if threat.id:
                 try:
-                    explanation = self.ai_explainer.explain_threat(threat, use_ai=use_ai)
+                    explanation = self.ai_explainer.explain_threat(
+                        threat, use_ai=use_ai, ai_severities=ai_severities
+                    )
                     if explanation:
                         self.database.update_threat_explanation(threat.id, explanation)
                         threat.ai_explanation = explanation

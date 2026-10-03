@@ -22,3 +22,8 @@ demo/generated/
 demo/outputs/
 suricata_rules/*.backup.*
 suricata_rules/autodefender_blocks.json
+suricata_rules/*.rules
+suricata_rules/*.lock
+ip_lists.json
+config.ini
+*.log

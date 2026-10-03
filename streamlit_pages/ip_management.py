@@ -28,6 +28,10 @@ def show() -> None:
         st.error(f"Invalid path in current settings: {exc}")
         return
 
+    whitelist = ip_manager.get_whitelist()
+    blacklist = ip_manager.get_blacklist()
+    threat_counts = db.count_threats_by_source(whitelist + blacklist)
+
     col1, col2 = st.columns(2)
 
     with col1:
@@ -52,13 +56,12 @@ def show() -> None:
                 else:
                     st.warning(f"{new_ip} is already whitelisted.")
 
-        whitelist = ip_manager.get_whitelist()
         if whitelist:
             st.markdown(f"Whitelisted IPs ({len(whitelist)} total):")
             for ip_value in whitelist:
                 row_col1, row_col2 = st.columns([3, 1])
                 with row_col1:
-                    threat_count = len(db.get_threats(limit=10000, source_ip=ip_value))
+                    threat_count = threat_counts.get(ip_value, 0)
                     st.text(f"{ip_value} (would ignore {threat_count} threats)")
                 with row_col2:
                     if st.button("Remove", key=f"remove_whitelist_{ip_value}"):
@@ -91,13 +94,12 @@ def show() -> None:
                 else:
                     st.warning(f"{new_ip} is already blacklisted.")
 
-        blacklist = ip_manager.get_blacklist()
         if blacklist:
             st.markdown(f"Blacklisted IPs ({len(blacklist)} total):")
             for ip_value in blacklist:
                 row_col1, row_col2 = st.columns([3, 1])
                 with row_col1:
-                    threat_count = len(db.get_threats(limit=10000, source_ip=ip_value))
+                    threat_count = threat_counts.get(ip_value, 0)
                     st.text(f"{ip_value} (generated {threat_count} threats)")
                 with row_col2:
                     if st.button("Remove ", key=f"remove_blacklist_{ip_value}"):

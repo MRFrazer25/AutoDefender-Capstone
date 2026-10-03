@@ -284,7 +284,7 @@ def show_database_tab(db_path: str) -> None:
             record("database_backup_downloaded", {"db": db_path})
             st.download_button(
                 "Download backup",
-                path.read_bytes(),
+                db.backup_bytes(),
                 file_name=f"autodefender_backup_{path.stem}.db",
                 mime="application/octet-stream",
             )

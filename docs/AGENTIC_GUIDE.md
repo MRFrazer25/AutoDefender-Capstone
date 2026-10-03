@@ -172,7 +172,7 @@ python main.py --monitor /var/log/suricata/eve.json --model <model>
 python main.py --analyze /var/log/suricata/eve.json
 ```
 
-**Result:** Threats and recommended actions (including `SURICATA_DROP_RULE`) are stored in the database. Historical analysis doesn't write rules; review and approve them later in the web console's Action Management page.
+**Result:** Threats and recommended actions (including `SURICATA_DROP_RULE`) are stored in the database. The report covers only that file; it does not mix in older database rows. Historical analysis doesn't write rules; review and approve them later in the web console's Action Management page.
 
 ---
 

@@ -15,6 +15,12 @@ from datetime import datetime, timezone
 import streamlit as st
 
 from autodefender import audit
+from autodefender.login_lockout import (
+    LOCKOUT_SECONDS,
+    failures_for_client,
+    global_backoff,
+    lockout_remaining,
+)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -62,8 +68,6 @@ st.markdown(
 PASSWORD_ENV = "AUTODEFENDER_UI_PASSWORD"
 DEV_MODE_ENV = "AUTODEFENDER_DEV"
 MIN_PASSWORD_LENGTH = 12
-MAX_ATTEMPTS = 5
-LOCKOUT_SECONDS = 300
 PBKDF2_ITERATIONS = 200_000
 LOCAL_ADDRESSES = {"localhost", "127.0.0.1", "::1"}
 # Sign the session out after this long without any interaction
@@ -97,10 +101,23 @@ RESTRICTED_BEFORE_SETUP = {
 def _login_guard() -> dict:
     """In-memory sign-in state shared by every browser session in this server process.
 
-    The lock serializes sign-in checks; the failure times back up the audit
-    log (which makes the lockout survive restarts) in case it can't be written.
+    Failures are keyed per client so one source cannot lock out another.
+    A higher global list only adds backoff, never a hard lock. The audit log
+    persists per-client failures across restarts.
     """
-    return {"lock": threading.Lock(), "failures": []}
+    return {"lock": threading.Lock(), "failures": {}, "global_failures": []}
+
+
+def _client_key() -> str:
+    """Identify the caller for lockout (Streamlit peer address, else 'unknown')."""
+    try:
+        ip = getattr(st.context, "ip_address", None)
+    except Exception:
+        ip = None
+    # AppTest and other mocks are truthy but not a real address; ignore them
+    if isinstance(ip, str) and ip.strip():
+        return ip.strip()
+    return "unknown"
 
 
 @st.cache_resource
@@ -125,30 +142,14 @@ def _password_fingerprint(password: str) -> str:
     return _configured_password_digest(password).hex()
 
 
-def _lockout_remaining(failure_times: list, now: float) -> float:
-    """Seconds left in a lockout, given failed sign-in times since the last success.
-
-    Sliding window: at most MAX_ATTEMPTS failures per LOCKOUT_SECONDS.
-    """
-    recent = sorted(t for t in failure_times if now - t < LOCKOUT_SECONDS)
-    if len(recent) < MAX_ATTEMPTS:
-        return 0.0
-    return max(0.0, recent[-MAX_ATTEMPTS] + LOCKOUT_SECONDS - now)
-
-
-def _persisted_failures(now: float) -> list:
-    """Failed sign-in times from the audit log since the last successful sign-in."""
+def _persisted_failures(now: float, client_key: str) -> list:
+    """Failed sign-in times from the audit log for this client since its last success."""
     since = datetime.fromtimestamp(now - LOCKOUT_SECONDS, tz=timezone.utc)
-    failures = []
     try:
-        for entry in audit.recent({"sign_in", "sign_in_failed"}, since):
-            if entry["action"] == "sign_in":
-                failures = []
-            else:
-                failures.append(entry["timestamp"].timestamp())
+        return failures_for_client(audit.recent({"sign_in", "sign_in_failed"}, since), client_key)
     except Exception:
         logger.exception("Could not read sign-in history from the audit log")
-    return failures
+        return []
 
 
 def _configured_password() -> str:
@@ -251,37 +252,59 @@ def require_password() -> bool:
 
     if submitted:
         guard = _login_guard()
+        client = _client_key()
         # Check the lockout and the password in one locked step, so parallel
         # attempts can't slip past the attempt limit
         with guard["lock"]:
             now = time.time()
+            client_failures = list(guard["failures"].get(client, []))
             remaining = max(
-                _lockout_remaining(guard["failures"], now),
-                _lockout_remaining(_persisted_failures(now), now),
+                lockout_remaining(client_failures, now),
+                lockout_remaining(_persisted_failures(now, client), now),
             )
+            backoff = global_backoff(guard["global_failures"], now)
             if remaining > 0:
-                audit.record("console", "sign_in_blocked", {"seconds_left": int(remaining) + 1})
+                audit.record(
+                    "console", "sign_in_blocked",
+                    {"client": client, "seconds_left": int(remaining) + 1},
+                )
             else:
                 # Compare fixed-length digests in constant time
                 supplied = _password_digest(password_input)
                 expected = _configured_password_digest(password_required)
                 if hmac.compare_digest(supplied, expected):
-                    guard["failures"].clear()
+                    guard["failures"].pop(client, None)
                     st.session_state.authenticated = True
                     st.session_state.password_fingerprint = fingerprint
                     st.session_state.last_activity = time.time()
                     logger.info("Console sign-in succeeded")
-                    audit.record("console", "sign_in")
+                    audit.record("console", "sign_in", {"client": client})
                     st.rerun()
 
-                guard["failures"].append(now)
-                guard["failures"] = [t for t in guard["failures"] if now - t < LOCKOUT_SECONDS]
-                logger.warning("Console sign-in failed (%s recently)", len(guard["failures"]))
-                audit.record("console", "sign_in_failed", {"recent_failures": len(guard["failures"])})
-                if _lockout_remaining(guard["failures"], now) > 0:
-                    logger.warning("Console sign-in locked for up to %s seconds", LOCKOUT_SECONDS)
-                    audit.record("console", "sign_in_locked", {"seconds": LOCKOUT_SECONDS})
-        time.sleep(1)  # Slows down guessing (outside the lock)
+                client_failures.append(now)
+                client_failures = [t for t in client_failures if now - t < LOCKOUT_SECONDS]
+                guard["failures"][client] = client_failures
+                guard["global_failures"].append(now)
+                guard["global_failures"] = [
+                    t for t in guard["global_failures"] if now - t < LOCKOUT_SECONDS
+                ]
+                logger.warning(
+                    "Console sign-in failed for %s (%s recently)", client, len(client_failures)
+                )
+                audit.record(
+                    "console", "sign_in_failed",
+                    {"client": client, "recent_failures": len(client_failures)},
+                )
+                if lockout_remaining(client_failures, now) > 0:
+                    logger.warning(
+                        "Console sign-in locked for %s for up to %s seconds",
+                        client, LOCKOUT_SECONDS,
+                    )
+                    audit.record(
+                        "console", "sign_in_locked",
+                        {"client": client, "seconds": LOCKOUT_SECONDS},
+                    )
+        time.sleep(1 + backoff)  # Slows down guessing (outside the lock)
         if remaining > 0:
             st.error(f"Too many failed attempts. Try again in {int(remaining) + 1} seconds.")
             return False

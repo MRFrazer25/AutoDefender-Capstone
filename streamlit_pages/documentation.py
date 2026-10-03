@@ -19,7 +19,8 @@ SECTIONS = {
   background and keeps going while you use other pages.
 - Tick **Process existing entries** to analyze a whole log file instead of only new lines.
 - **Metrics**, the severity chart, the timeline, and top source IPs update while monitoring.
-- **Recent threats** can be filtered by severity and searched; pick a threat to see its details,
+- **Recent threats** are filtered by severity and search text first, then limited to the row count
+  you pick; pick a threat to see its details,
   MITRE ATT&CK techniques, AI explanation, and recommended actions.
 """,
     "Incidents": """
@@ -53,6 +54,7 @@ SECTIONS = {
 ### IP management
 
 - **Whitelist** trusted IPs: detection ignores them and they are never blocked.
+  Edits apply to a running monitor without restarting it.
 - **Blacklist** known malicious IPs: their traffic raises HIGH alerts (it is not blocked automatically).
 - Import or export IP lists in bulk, and add IPs straight from the IP analysis table.
 """,
@@ -100,6 +102,8 @@ SECTIONS = {
 
 - Keep the console on localhost, or put it behind a reverse proxy with HTTPS if others need it.
 - Use a long, unique `AUTODEFENDER_UI_PASSWORD`. The console will not start without one.
+  Lockout is per client (5 failures / 5 minutes); a global backoff slows mass guessing
+  without locking the real operator out.
 - Review whitelists and blacklists regularly to avoid stale entries.
 - Set a block duration (Settings -> Suricata) so old blocks expire; IP addresses get reassigned over time.
 - Keep dry-run mode and manual approvals on until you trust the setup.

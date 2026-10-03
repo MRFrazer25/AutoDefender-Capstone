@@ -109,13 +109,26 @@ def recent(actions: Iterable[str], since: datetime) -> List[dict]:
         try:
             rows = conn.execute(
                 # marks is only "?" placeholders; values are bound as parameters
-                f"SELECT timestamp, action FROM audit_log WHERE action IN ({marks}) "  # nosec B608
+                f"SELECT timestamp, action, details FROM audit_log WHERE action IN ({marks}) "  # nosec B608
                 "AND timestamp >= ? ORDER BY id",
                 (*actions, since.astimezone(timezone.utc).isoformat(timespec="microseconds")),
             ).fetchall()
         finally:
             conn.close()
-    return [{"timestamp": datetime.fromisoformat(r[0]), "action": r[1]} for r in rows]
+    result = []
+    for stamp, action, details_text in rows:
+        try:
+            details = json.loads(details_text) if details_text else {}
+        except json.JSONDecodeError:
+            details = {}
+        if not isinstance(details, dict):
+            details = {}
+        result.append({
+            "timestamp": datetime.fromisoformat(stamp),
+            "action": action,
+            "details": details,
+        })
+    return result
 
 
 def verify() -> Tuple[bool, Optional[int]]:

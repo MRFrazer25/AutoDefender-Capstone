@@ -60,9 +60,20 @@ def test_repeat_hits_are_deduplicated_until_cooldown_ends():
 def test_suricata_severity_is_used():
     det = ThreatDetector(Config())
     assert det.detect(alert("203.0.113.12", 0, 3)).severity == "LOW"
-    assert det.detect(alert("203.0.113.12", 1, 2)).severity == "MEDIUM"
-    assert det.detect(alert("203.0.113.12", 2, 1)).severity == "HIGH"
-    assert det.detect(alert("203.0.113.12", 3, 1, "ET EXPLOIT x", action="blocked")).severity == "LOW"
+    assert det.detect(alert("203.0.113.13", 1, 2)).severity == "MEDIUM"
+    assert det.detect(alert("203.0.113.14", 2, 1)).severity == "HIGH"
+    assert det.detect(alert("203.0.113.15", 3, 1, "ET EXPLOIT x", action="blocked")).severity == "LOW"
+
+
+def test_alert_repeat_is_suppressed_until_cooldown_ends():
+    det = ThreatDetector(Config())
+    first = det.detect(alert("203.0.113.20", 0, 1, "ET SCAN ssh", signature_id=1001))
+    assert first is not None and first.event_type == "alert"
+    assert det.detect(alert("203.0.113.20", 5, 1, "ET SCAN ssh", signature_id=1001)) is None
+    other = det.detect(alert("203.0.113.20", 6, 1, "ET EXPLOIT x", signature_id=1002))
+    assert other is not None
+    later = det.detect(alert("203.0.113.20", 700, 1, "ET SCAN ssh", signature_id=1001))
+    assert later is not None
 
 
 def test_blacklist_and_whitelist(tmp_path):
@@ -103,3 +114,14 @@ def test_ip_lists_validate_and_normalize(tmp_path):
         pass
     assert ips.add_blacklist("2001:db8::1")
     assert ips.is_blacklisted("2001:0db8:0::1")
+
+
+def test_whitelist_reloads_when_file_changes(tmp_path):
+    path = tmp_path / "ips.json"
+    writer = IPManager(str(path))
+    reader = IPManager(str(path))
+    assert not reader.is_whitelisted("203.0.113.8")
+    writer.add_whitelist("203.0.113.8")
+    assert reader.is_whitelisted("203.0.113.8")
+    writer.remove_whitelist("203.0.113.8")
+    assert not reader.is_whitelisted("203.0.113.8")

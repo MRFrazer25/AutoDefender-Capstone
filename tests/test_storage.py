@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from autodefender.analyzer import HistoricalAnalyzer
+from autodefender.config import Config
 from autodefender.database import Database
 from autodefender.exporter import threats_to_csv, threats_to_json, write_export
 from autodefender.filter import ThreatFilter
@@ -88,6 +90,46 @@ def test_exports_neutralize_formulas_and_stay_in_exports(in_tmp):
 
 def test_markdown_escaping():
     assert md_escape("[x](http://e)![i](http://e)") == r"\[x\]\(http\://e\)\!\[i\]\(http\://e\)"
+
+
+def test_count_threats_by_source(db):
+    for ip, count in (("203.0.113.2", 3), ("203.0.113.3", 1)):
+        for i in range(count):
+            db.add_threat(make_threat(ip, f"{ip}-{i}", T0))
+    counts = db.count_threats_by_source(["203.0.113.2", "203.0.113.3", "203.0.113.9"])
+    assert counts == {"203.0.113.2": 3, "203.0.113.3": 1}
+    assert db.count_threats_by_source([]) == {}
+
+
+def test_sqlite_backup_round_trip(db, tmp_path):
+    db.add_threat(make_threat("203.0.113.4", "kept", T0, "HIGH"))
+    snapshot = db.backup_bytes()
+    copy_path = tmp_path / "copy.db"
+    copy_path.write_bytes(snapshot)
+    copy = Database(str(copy_path))
+    try:
+        threats = copy.get_threats()
+        assert [t.description for t in threats] == ["kept"]
+    finally:
+        copy.close()
+
+
+def test_analyze_summary_ignores_older_database_rows(tmp_path):
+    db_path = tmp_path / "hist.db"
+    prior = Database(str(db_path))
+    prior.add_threat(make_threat("203.0.113.50", "old-db-row", T0, "CRITICAL"))
+    prior.close()
+    config = Config()
+    config.db_path = str(db_path)
+    config.ollama_endpoint = "http://127.0.0.1:9"
+    analyzer = HistoricalAnalyzer(config)
+    try:
+        summary = analyzer.get_summary([])
+        assert "old-db-row" not in summary
+        assert "Threats Detected: 0" in summary
+        assert "Total: 0" in summary
+    finally:
+        analyzer.close()
 
 
 def test_path_allow_list(in_tmp, tmp_path_factory, monkeypatch):

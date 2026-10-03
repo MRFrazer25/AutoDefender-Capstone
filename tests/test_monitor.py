@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from autodefender.config import Config
 from autodefender.database import Database
 from autodefender.monitor import RealTimeMonitor
+import autodefender.monitor as monitor_mod
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -57,3 +58,20 @@ def test_tailing_partial_lines_and_rotation(tmp_path):
         assert len(db.get_threats()) == 3
     finally:
         db.close()
+
+
+def test_chunked_read_processes_large_growth(tmp_path, monkeypatch):
+    monkeypatch.setattr(monitor_mod, "READ_CHUNK_SIZE", 80)
+    log = tmp_path / "eve.json"
+    log.write_text("")
+    config = Config()
+    config.db_path = str(tmp_path / "chunk.db")
+    config.ollama_endpoint = "http://127.0.0.1:9"
+    monitor = RealTimeMonitor(str(log), config, poll_interval=0.1, queue_suricata_approvals=False)
+    monitor.start()
+    try:
+        payload = "".join(alert_line(i) + "\n" for i in range(10, 20))
+        log.write_text(payload)
+        assert wait_for(lambda: monitor.events_processed == 10)
+    finally:
+        monitor.stop()

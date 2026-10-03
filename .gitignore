@@ -29,6 +29,7 @@ playbooks/*.tmp
 *.mmdb
 suricata_rules/autodefender_blocks.json*
 suricata_rules/*.tmp
+suricata_rules/*.lock
 
 # Environment and secrets files
 .env

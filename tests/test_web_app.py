@@ -1,6 +1,7 @@
 """Web console: sign-in, every page, monitoring, and approvals (Streamlit AppTest)."""
 
 import hashlib
+import os
 import shutil
 import time
 from pathlib import Path
@@ -27,6 +28,8 @@ def app_env(in_repo, tmp_path, monkeypatch):
 
 def new_app(state=None):
     at = AppTest.from_file(str(ROOT / "streamlit_app.py"), default_timeout=APP_TIMEOUT)
+    # Override local .streamlit/secrets.toml so tests only see the fixture password
+    at.secrets["AUTODEFENDER_UI_PASSWORD"] = os.getenv("AUTODEFENDER_UI_PASSWORD", "")
     for key, value in (state or {}).items():
         at.session_state[key] = value
     return at

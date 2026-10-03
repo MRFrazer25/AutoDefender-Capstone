@@ -111,6 +111,38 @@ def test_ai_call_budget(fake_ollama, monkeypatch):
     assert len(FakeOllama.prompts) == 2
 
 
+def test_medium_uses_ai_only_when_requested(fake_ollama):
+    FakeOllama.reply = "medium explanation"
+    threat = hostile_threat()
+    threat.severity = "MEDIUM"
+    explainer = AIExplainer(fake_ollama)
+    fallback = explainer.explain_threat(threat, use_ai=True)
+    assert fallback != "medium explanation"
+    assert explainer.explain_threat(threat, use_ai=True, ai_severities=["MEDIUM"]) == "medium explanation"
+
+
+def test_cache_key_includes_signature_and_description():
+    explainer = AIExplainer.__new__(AIExplainer)
+    base = dict(timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc), source_ip="203.0.113.66",
+                dest_ip="10.0.0.5", dest_port=22, event_type="alert", severity="HIGH")
+    first = Threat(description="SSH scan", raw_event={"alert": {"signature_id": 1}}, **base)
+    second = Threat(description="SQL injection", raw_event={"alert": {"signature_id": 1}}, **base)
+    third = Threat(description="SSH scan", raw_event={"alert": {"signature_id": 2}}, **base)
+    assert explainer._get_cache_key(first) != explainer._get_cache_key(second)
+    assert explainer._get_cache_key(first) != explainer._get_cache_key(third)
+
+
+def test_calls_per_minute_setting_rejects_bad_values(monkeypatch):
+    monkeypatch.setenv("AUTODEFENDER_AI_CALLS_PER_MINUTE", "not-a-number")
+    assert ai_explainer._calls_per_minute_setting() == ai_explainer.DEFAULT_AI_CALLS_PER_MINUTE
+    monkeypatch.setenv("AUTODEFENDER_AI_CALLS_PER_MINUTE", "0")
+    assert ai_explainer._calls_per_minute_setting() == ai_explainer.DEFAULT_AI_CALLS_PER_MINUTE
+    monkeypatch.setenv("AUTODEFENDER_AI_CALLS_PER_MINUTE", "12")
+    assert ai_explainer._calls_per_minute_setting() == 12
+    monkeypatch.delenv("AUTODEFENDER_AI_CALLS_PER_MINUTE")
+    assert ai_explainer._calls_per_minute_setting() == ai_explainer.DEFAULT_AI_CALLS_PER_MINUTE
+
+
 def test_unreachable_ollama_falls_back_fast():
     config = Config()
     config.ollama_endpoint = "http://127.0.0.1:9"  # Nothing listens here

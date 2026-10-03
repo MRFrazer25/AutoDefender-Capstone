@@ -170,15 +170,21 @@ class ThreatDetector:
             oldest = sorted(self.ip_activity, key=lambda ip: self.ip_activity[ip]['last_seen'])
             for ip in oldest[: len(oldest) // 2]:
                 del self.ip_activity[ip]
-        self._last_alerted = {
-            key: when for key, when in self._last_alerted.items() if when >= now - self.cooldown
-        }
 
     def _in_cooldown(self, key: tuple, now: datetime) -> bool:
         """Return True if this detection fired recently; otherwise record it."""
         last = self._last_alerted.get(key)
         if last is not None and abs(now - last) < self.cooldown:
             return True
+        if last is None and len(self._last_alerted) >= self.MAX_TRACKED_IPS:
+            # Alerts from spoofed sources must not grow this without bound
+            self._last_alerted = {
+                k: when for k, when in self._last_alerted.items() if abs(now - when) < self.cooldown
+            }
+            if len(self._last_alerted) >= self.MAX_TRACKED_IPS:
+                oldest = sorted(self._last_alerted, key=self._last_alerted.get)
+                for k in oldest[: len(oldest) // 2]:
+                    del self._last_alerted[k]
         self._last_alerted[key] = now
         return False
 
@@ -198,6 +204,9 @@ class ThreatDetector:
     def _detect_alert_threat(self, event: Dict, alert: Dict, now: datetime) -> Optional[Threat]:
         """Detect threat from Suricata alert."""
         signature_text = str(alert.get('signature') or 'Unknown signature')
+        signature_key = alert.get('signature_id') or signature_text
+        if self._in_cooldown((event.get('src_ip'), 'alert', signature_key), now):
+            return None
         signature = signature_text.lower()
         category = str(alert.get('category') or '').lower()
         action = str(alert.get('action') or '')

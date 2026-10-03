@@ -153,13 +153,13 @@ The UI will open at `http://localhost:8501` and provides:
 - Threat analysis with filtering, search, and export tools
 - Action management for approving AI-generated rules and playbooks
 - Playbook Editor for customizing response workflows
-- IP whitelist and blacklist management
+- IP whitelist and blacklist management (the running monitor reloads `ip_lists.json` when it changes)
 - Settings for Suricata, Ollama, and database options
 - Built-in documentation
 
 **First steps:**
 1. Complete the Setup page before navigating elsewhere. Provide the Suricata log path, database path, and Ollama details.
-2. Set the `AUTODEFENDER_UI_PASSWORD` environment variable (at least 12 characters) before launching. The console refuses to start without it. On Streamlit Community Cloud, add it under **App settings -> Secrets** instead (see `.streamlit/secrets.toml.example`). For local development only, you can skip the password with `AUTODEFENDER_DEV=1` plus `--server.address localhost`.
+2. Set the `AUTODEFENDER_UI_PASSWORD` environment variable (at least 12 characters) before launching. The console refuses to start without it. On Streamlit Community Cloud, add it under **App settings -> Secrets** instead (see `.streamlit/secrets.toml.example`). For local development only, you can skip the password with `AUTODEFENDER_DEV=1` plus `--server.address localhost`. Failed sign-ins lock that client after 5 attempts in 5 minutes; a higher global backoff slows guessing without locking the operator out from another address.
 3. After setup is marked complete, open the Dashboard and click **Start monitoring**. A background monitor tails each log file (handling log rotation), detects threats, and writes them to the database while the dashboard refreshes. Tick "Process existing entries" to analyze a whole uploaded log.
 4. Log paths may be inside the project folder or Suricata's default log folders (`/var/log/suricata`, `C:\Program Files\Suricata\log`). To use other folders (for example `/etc/suricata/rules` for the rules directory), list them in `AUTODEFENDER_ALLOWED_DIRS`, separated by `:` on Linux/macOS or `;` on Windows.
 
@@ -181,6 +181,7 @@ Analyze one or more existing log files:
 ```bash
 python main.py --analyze /path/to/log1.json /path/to/log2.json
 ```
+`--analyze` reports and exports only threats from those paths. If a file has no detections, AutoDefender does not fall back to older rows already in the database.
 
 ### Filtering Threats
 Filter threats by severity:
@@ -200,7 +201,7 @@ Choose which threats to analyze with AI:
 # Analyze only HIGH and CRITICAL threats with AI
 python main.py --analyze demo/example_suricata_log.json --ai-severities HIGH CRITICAL
 
-# Analyze all MEDIUM threats with AI
+# Analyze all MEDIUM threats with AI (without this flag, only HIGH and CRITICAL use the model)
 python main.py --analyze demo/example_suricata_log.json --filter-severity MEDIUM --ai-severities MEDIUM
 ```
 
@@ -463,7 +464,7 @@ AutoDefender-Capstone/
 
 ## Security & Privacy
 
-- **Password Required**: The web console refuses to start without `AUTODEFENDER_UI_PASSWORD` (12+ characters, and not one of the example values from these docs). There are no user accounts or sign-up pages. The password is compared in constant time; more than 5 wrong attempts in 5 minutes locks sign-in (this survives restarts), and changing the password signs out open sessions
+- **Password Required**: The web console refuses to start without `AUTODEFENDER_UI_PASSWORD` (12+ characters, and not one of the example values from these docs). There are no user accounts or sign-up pages. The password is compared in constant time; more than 5 wrong attempts in 5 minutes lock that client (this survives restarts). A higher global backoff slows mass guessing without locking the operator out from another address. Changing the password signs out open sessions
 - **Audit Trail**: Security-relevant actions are recorded in a local, hash-chained, tamper-evident audit log
 - **Local Processing**: Analysis, AI explanations (Ollama), and GeoIP lookups all run locally. Nothing leaves your machine unless you configure a webhook
 - **Safe Rule Writing**: Only single-IP `drop` rules are written. AI-suggested rules must target the threat's own source IP; rules for `any`, loopback, or whitelisted IPs are refused, and SIDs are assigned by AutoDefender

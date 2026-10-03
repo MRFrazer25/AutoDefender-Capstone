@@ -24,6 +24,22 @@ from autodefender.utils.path_utils import sanitize_path
 logger = logging.getLogger(__name__)
 
 
+def apply_threat_filters(threats, severity_filter, search_query, limit):
+    """Filter by severity and search text, then cap the number of rows shown."""
+    filtered = list(threats)
+    if severity_filter:
+        filtered = [threat for threat in filtered if threat.severity in severity_filter]
+    if search_query:
+        query = search_query.lower()
+        filtered = [
+            threat
+            for threat in filtered
+            if query in threat.description.lower()
+            or (threat.source_ip and query in threat.source_ip.lower())
+        ]
+    return filtered[:limit]
+
+
 def show() -> None:
     """Display the dashboard."""
     st.markdown(
@@ -223,21 +239,7 @@ def show() -> None:
             placeholder="Example: 192.168.1.10 or SSH scan",
         )
 
-    filtered_threats = threats[:limit]
-
-    if severity_filter:
-        filtered_threats = [
-            threat for threat in filtered_threats if threat.severity in severity_filter
-        ]
-
-    if search_query:
-        query = search_query.lower()
-        filtered_threats = [
-            threat
-            for threat in filtered_threats
-            if query in threat.description.lower()
-            or (threat.source_ip and query in threat.source_ip.lower())
-        ]
+    filtered_threats = apply_threat_filters(threats, severity_filter, search_query, limit)
 
     if filtered_threats:
         threat_rows = []

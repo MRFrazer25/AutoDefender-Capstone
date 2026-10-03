@@ -32,7 +32,20 @@ class IPManager:
         self.config_path = Path(config_path)
         self.whitelist: Set[str] = set()
         self.blacklist: Set[str] = set()
+        self._lists_mtime: Optional[float] = None
         self._load_lists()
+
+    def _file_mtime(self) -> Optional[float]:
+        try:
+            return self.config_path.stat().st_mtime if self.config_path.exists() else None
+        except OSError:
+            return None
+
+    def _reload_if_stale(self):
+        """Reload lists when another process or page has rewritten the file."""
+        mtime = self._file_mtime()
+        if mtime != self._lists_mtime:
+            self._load_lists()
 
     def _load_lists(self):
         """Load whitelist and blacklist from file."""
@@ -50,6 +63,7 @@ class IPManager:
         else:
             # Create empty file
             self._save_lists()
+        self._lists_mtime = self._file_mtime()
 
     @staticmethod
     def _clean_list(values) -> Set[str]:
@@ -73,6 +87,7 @@ class IPManager:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
             logger.debug(f"Saved IP lists to {self.config_path}")
+            self._lists_mtime = self._file_mtime()
         except IOError as e:
             logger.error(f"Error saving IP lists: {e}")
 
@@ -176,6 +191,7 @@ class IPManager:
         Returns:
             True if whitelisted, False otherwise
         """
+        self._reload_if_stale()
         return normalize_ip(ip) in self.whitelist
 
     def is_blacklisted(self, ip: Optional[str]) -> bool:
@@ -188,6 +204,7 @@ class IPManager:
         Returns:
             True if blacklisted, False otherwise
         """
+        self._reload_if_stale()
         return normalize_ip(ip) in self.blacklist
 
     def should_ignore(self, ip: Optional[str]) -> bool:

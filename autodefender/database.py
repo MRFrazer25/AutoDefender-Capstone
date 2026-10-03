@@ -8,6 +8,7 @@ import os
 import sqlite3
 import json
 import logging
+import tempfile
 import threading
 from datetime import datetime, timedelta, timezone
 from autodefender.parser import to_utc
@@ -179,6 +180,47 @@ class Database:
         
         cursor.execute(query, params)
         return [self._row_to_threat(row) for row in cursor.fetchall()]
+
+    @_locked
+    def count_threats_by_source(self, source_ips: Optional[List[str]] = None) -> dict:
+        """Return COUNT(*) per source_ip, optionally limited to the given addresses."""
+        cursor = self.conn.cursor()
+        if source_ips is not None:
+            if not source_ips:
+                return {}
+            marks = ",".join("?" * len(source_ips))
+            cursor.execute(
+                f"SELECT source_ip, COUNT(*) AS n FROM threats "  # nosec B608
+                f"WHERE source_ip IN ({marks}) GROUP BY source_ip",
+                list(source_ips),
+            )
+        else:
+            cursor.execute(
+                "SELECT source_ip, COUNT(*) AS n FROM threats "
+                "WHERE source_ip IS NOT NULL GROUP BY source_ip"
+            )
+        return {row["source_ip"]: row["n"] for row in cursor.fetchall()}
+
+    @_locked
+    def backup_bytes(self) -> bytes:
+        """Consistent snapshot via SQLite's backup API (includes WAL)."""
+        fd, tmp_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        dest = None
+        try:
+            dest = sqlite3.connect(tmp_path)
+            self.conn.backup(dest)
+            dest.close()
+            dest = None
+            with open(tmp_path, "rb") as handle:
+                return handle.read()
+        finally:
+            if dest is not None:
+                dest.close()
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
     
     @_locked
     def update_threat_explanation(self, threat_id: int, explanation: str):

@@ -17,6 +17,7 @@ import re
 import os
 import subprocess  # nosec B404 - only runs suricatasc with fixed arguments
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple
@@ -31,6 +32,31 @@ DROP_RULE_PATTERN = re.compile(
 )
 
 MSG_MAX_LENGTH = 150
+
+
+def _acquire_file_lock(handle):
+    """Block until this handle holds an exclusive lock on the lock file."""
+    if os.name == "nt":
+        import msvcrt
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+
+
+def _release_file_lock(handle):
+    if os.name == "nt":
+        import msvcrt
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def sanitize_rule_msg(text: str) -> str:
@@ -145,6 +171,22 @@ class SuricataManager:
                             self.next_sid = max_sid + 1
         except Exception as e:
             logger.warning(f"Could not load existing SIDs: {e}")
+
+    @contextmanager
+    def _exclusive_rules_access(self):
+        """Cross-process file lock plus per-instance thread lock around rule writes."""
+        lock_path = self.custom_rules_file.with_name(self.custom_rules_file.name + ".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(lock_path, "a+b")
+        try:
+            _acquire_file_lock(handle)
+            with self._write_lock:
+                yield
+        finally:
+            try:
+                _release_file_lock(handle)
+            finally:
+                handle.close()
     
     def is_safe_path(self, path: Path) -> bool:
         """
@@ -189,9 +231,15 @@ class SuricataManager:
             return None
         
         try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_path = self.custom_rules_file.with_suffix(f'.rules.backup.{timestamp}')
-            
+            suffix = 1
+            while backup_path.exists():
+                backup_path = self.custom_rules_file.with_suffix(
+                    f'.rules.backup.{timestamp}.{suffix}'
+                )
+                suffix += 1
+
             shutil.copy2(self.custom_rules_file, backup_path)
             logger.info(f"Created backup: {backup_path}")
             return backup_path
@@ -231,7 +279,9 @@ class SuricataManager:
             logger.error(f"Unsafe path: {self.custom_rules_file}")
             return False
 
-        with self._write_lock:
+        with self._exclusive_rules_access():
+            # Re-read the file under the lock so another process's SID is never reused
+            self._load_existing_sids()
             # One rule per IP: approving the same block twice is a no-op
             existing = self.find_block(ip)
             if existing:
@@ -328,7 +378,7 @@ class SuricataManager:
         sids = {int(s) for s in sids}
         if not sids or not hasattr(self, 'custom_rules_file'):
             return 0
-        with self._write_lock:
+        with self._exclusive_rules_access():
             if getattr(self.config, 'SURICATA_DRY_RUN', False):
                 logger.info(f"[DRY RUN] Would remove rules with SIDs {sorted(sids)}")
                 return 0
