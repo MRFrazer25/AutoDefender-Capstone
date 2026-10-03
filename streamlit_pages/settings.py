@@ -96,7 +96,7 @@ def show() -> None:
         model = st.text_input(
             "Ollama model name",
             value=config.ollama_model or "",
-            placeholder="Example: phi4-mini",
+            placeholder="Any model you pulled with 'ollama pull' (leave blank to skip AI)",
         )
         st.caption("Ollama runs locally, so threat data sent for explanations stays on your network.")
         if geoip_enabled():
@@ -234,7 +234,7 @@ auto_reload = false
 
 [ollama]
 endpoint = http://localhost:11434
-model = phi4-mini
+model = your-model-name
 
 [database]
 path = autodefender.db

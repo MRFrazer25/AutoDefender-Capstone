@@ -43,7 +43,7 @@ The quickest way to try everything (AutoDefender, a local Ollama, and a replayer
 ```bash
 cp .env.example .env        # then set AUTODEFENDER_UI_PASSWORD in .env
 docker compose up -d --build
-docker compose exec ollama ollama pull phi4-mini
+docker compose exec ollama ollama pull <model>   # optional; then set OLLAMA_MODEL=<model> in .env
 ```
 
 Open http://localhost:8501, sign in, and start monitoring `/var/log/suricata/eve.json` on the Dashboard. Data (database, audit log, rules) is kept in the `autodefender-data` volume. The console is published on `127.0.0.1` only and Ollama is not exposed at all.
@@ -66,7 +66,7 @@ pip install -r requirements.txt
 3. Ensure Ollama is installed and running locally:
 ```bash
 # Install Ollama from https://ollama.ai
-ollama pull <your-chosen-model>  # e.g., llama3, mistral, phi4-mini, etc.
+ollama pull <model>  # any model you like
 ollama serve  # Start Ollama server
 ```
 
@@ -97,7 +97,7 @@ The demo database (`demo/demo_config.db`) is pre-populated and included in the r
 3. **Start Ollama**
    ```bash
    ollama serve
-   ollama pull phi4-mini   # Example model
+   ollama pull <model>   # optional: any model you like
    ```
 
 4. **Clone AutoDefender and install Python requirements**
@@ -118,7 +118,7 @@ The demo database (`demo/demo_config.db`) is pre-populated and included in the r
         - *Suricata eve.json path(s)*: the full path to `eve.json` (or multiple paths, one per line for aggregation)
         - *Database path*: leave default `autodefender.db` or point somewhere else
         - *Ollama endpoint*: `http://127.0.0.1:11434`
-        - *Ollama model*: the model you pulled (e.g., `phi4-mini`)
+        - *Ollama model* (optional): the model you pulled; leave blank to use built-in explanations
         - *(Optional)* Notification webhook URL: paste the Slack/Teams webhook if you want approved actions to ping that channel
         - Optional: enable Suricata rule management and pick a rules directory (default `./suricata_rules`)
      3. Click **Save configuration**. You can now navigate to Dashboard, Threat Analysis, etc.
@@ -126,7 +126,7 @@ The demo database (`demo/demo_config.db`) is pre-populated and included in the r
         - Log path: `demo/example_suricata_log.json`
         - Database: a working copy of `demo/demo_config.db` (in `demo/generated/`, so the committed file never changes)
         - Ollama endpoint: `http://127.0.0.1:11434`
-        - Model: `phi4-mini`
+        - Model: whatever you already entered (blank = built-in explanations)
         - Rules dir: `./suricata_rules` with dry-run enabled
         The demo is ready right away; switch back to your real paths when you're done.
 
@@ -215,19 +215,10 @@ python main.py --analyze demo/example_suricata_log.json --search "SSH" --export 
 ```
 
 ### Using AI Models
-Specify any Ollama model for AI explanations (required for AI features):
+AI explanations are optional. Pass any Ollama model you've pulled; without `--model` (or `OLLAMA_MODEL`), AutoDefender uses its built-in explanations:
 ```bash
-# Use llama3
-python main.py --analyze demo/example_suricata_log.json --filter-severity HIGH --model llama3
-
-# Use mistral
-python main.py --analyze demo/example_suricata_log.json --model mistral
-
-# Use phi4-mini
-python main.py --analyze demo/example_suricata_log.json --model phi4-mini
-
-# Use any installed Ollama model
-python main.py --monitor /var/log/suricata/eve.json --model gemma:7b
+python main.py --analyze demo/example_suricata_log.json --model <model>
+python main.py --monitor /var/log/suricata/eve.json --model <model>
 ```
 
 ### IP Whitelist/Blacklist Management
@@ -291,7 +282,7 @@ In the Streamlit Setup page, click **Load demo configuration** to pre-fill:
 - Suricata log path: `demo/example_suricata_log.json`
 - Database path: a working copy of `demo/demo_config.db` in `demo/generated/`
 - Ollama endpoint: `http://127.0.0.1:11434`
-- Ollama model: `phi4-mini`
+- Ollama model: whatever you already entered (blank = built-in explanations)
 - Suricata rules directory: `./suricata_rules`
 - Suricata rule management enabled with dry-run mode
 
@@ -372,11 +363,11 @@ Set environment variables or create a `config.ini` file (see `autodefender/confi
 - Detection thresholds (port scan threshold and window, repeat alert cooldown)
 - Suricata options (dry run, auto-approval, block duration, rule reload)
 
-**Note:** Use the `--model` flag to specify which Ollama model to use for AI features.
+**Note:** AI is optional. Use the `--model` flag (or `OLLAMA_MODEL`) to pick any Ollama model you've pulled.
 
 ### Environment Variables
 ```bash
-# Set Ollama model (or use --model flag) - user must choose their model
+# Optional: any Ollama model you've pulled (or use the --model flag)
 export OLLAMA_MODEL=your-model-name
 
 # Set Ollama endpoint
@@ -407,7 +398,7 @@ export WEBHOOK_URL=https://your-webhook-url   # must be https://
 - **Try online**: [https://autodefenderhackathon.streamlit.app/](https://autodefenderhackathon.streamlit.app/) - Demo database is pre-loaded and ready to use
 - **Start Suricata**: open PowerShell -> `cd "C:\Program Files\Suricata"` -> `.\suricata.exe -c suricata.yaml -i "Wi-Fi"`
 - **Run AutoDefender UI**: in the project folder -> set `AUTODEFENDER_UI_PASSWORD` -> `python -m streamlit run streamlit_app.py`
-- **Run CLI monitor**: `python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model phi4-mini`
+- **Run CLI monitor**: `python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model <model>`
 - **Load demo data**: Setup page -> "Load demo configuration" (works on both localhost and Streamlit Cloud)
 - **Replay demo log** (optional): `python demo/log_replayer.py demo/example_suricata_log.json --interval 0.5 --loop`
 - **Refresh demo database** (optional): `python tools/populate_demo_db.py` - Note: demo database is pre-populated in the repository
@@ -421,7 +412,7 @@ When monitoring finds a HIGH or CRITICAL threat, AutoDefender can propose a Suri
 export SURICATA_ENABLED=true
 export SURICATA_DRY_RUN=true          # Start here: rules are logged, not written
 export AUTO_APPROVE_SURICATA=false    # Ask before writing each rule (recommended)
-python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
+python main.py --monitor /var/log/suricata/eve.json --model <model>
 ```
 
 Drop rules only block traffic when Suricata runs inline (IPS mode). Include `suricata_rules/autodefender_custom.rules` in your `suricata.yaml`, then reload (`suricatasc`, the console's reload button, or `SURICATA_AUTO_RELOAD=true`) or restart Suricata after changes. Active blocks can be unblocked or set to expire (see **Blocks and Expiry** above).
@@ -507,7 +498,7 @@ The suite covers detection, rule safety, log tailing (rotation and partial lines
 ## Requirements
 
 - Python 3.10+
-- Ollama (local installation)
+- Ollama (optional, for AI explanations; any model)
 - Suricata log files (JSON format - eve.json)
 
 ## Troubleshooting

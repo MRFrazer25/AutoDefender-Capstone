@@ -25,10 +25,9 @@ def main() -> None:
     # Initialize AI explainer for generating real explanations
     print("Initializing AI explainer...")
     config = Config.get_default()
-    # Ensure model is set (default to phi4-mini if not specified)
+    # The model is your choice (OLLAMA_MODEL); without one, built-in explanations are used
     if not config.ollama_model:
-        config.ollama_model = "phi4-mini"
-        print(f"Using default model: {config.ollama_model}")
+        print("OLLAMA_MODEL is not set; threats will get built-in explanations.")
     explainer = AIExplainer(config)
     
     if not explainer.connected:

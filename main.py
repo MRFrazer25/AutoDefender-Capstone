@@ -401,8 +401,8 @@ Examples:
   # Historical analysis
   python main.py --analyze /path/to/log1.json /path/to/log2.json
   
-  # Use a specific Ollama model
-  python main.py --analyze logs.json --model llama3
+  # Use an Ollama model you've pulled (optional; without one, built-in explanations are used)
+  python main.py --analyze logs.json --model <model-name>
   
   # Both modes
   python main.py --both /var/log/suricata/eve.json /backup/logs/
@@ -528,7 +528,7 @@ Examples:
         '--model',
         type=str,
         metavar='NAME',
-        help='Ollama model to use for AI explanations (required for AI features)'
+        help='Ollama model to use for AI explanations (optional; any model you have pulled)'
     )
     
     args = parser.parse_args()

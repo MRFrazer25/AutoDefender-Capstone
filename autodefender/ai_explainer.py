@@ -59,6 +59,8 @@ class AIExplainer:
         self._call_times = deque()
         self._call_lock = threading.Lock()
         self._down_until = 0.0  # Ollama unreachable until this time (circuit breaker)
+        if not self.config.ollama_model:
+            logger.info("No Ollama model set (optional); using built-in explanations and rules")
         self._initialize_client()
     
     def _ai_call_allowed(self) -> bool:
@@ -170,7 +172,7 @@ class AIExplainer:
         """Generate explanation using Ollama."""
         # Check if model is specified
         if not self.config.ollama_model:
-            logger.warning("No Ollama model specified. Use --model flag or set OLLAMA_MODEL environment variable.")
+            logger.debug("No Ollama model set; using built-in text")
             return self._fallback_explanation(threat)
         
         try:
@@ -375,7 +377,7 @@ class AIExplainer:
         """
         # Check if model is specified
         if not self.config.ollama_model:
-            logger.warning("No Ollama model specified. Use --model flag or set OLLAMA_MODEL environment variable.")
+            logger.debug("No Ollama model set; using built-in text")
             return self._fallback_suricata_rule(threat)
         
         try:

@@ -43,7 +43,7 @@ MODEL_NAME_PATTERN = re.compile(r"[A-Za-z0-9._:/-]{1,100}")
 
 
 def is_valid_model_name(name: str) -> bool:
-    """Ollama model names look like 'phi4-mini' or 'library/llama3:8b'."""
+    """Ollama model names look like 'name', 'name:tag', or 'namespace/name:tag'."""
     return bool(MODEL_NAME_PATTERN.fullmatch(name or ""))
 
 
@@ -76,8 +76,9 @@ def show() -> None:
 
             st.session_state.log_path = str(DEMO_LOG)
             st.session_state.db_path = str(DEMO_WORKING_DB)
-            st.session_state.ollama_endpoint = "http://127.0.0.1:11434"
-            st.session_state.ollama_model = "phi4-mini"
+            st.session_state.ollama_endpoint = st.session_state.get("ollama_endpoint") or config.OLLAMA_ENDPOINT
+            # Keep whatever model the user already chose (none = built-in explanations)
+            st.session_state.ollama_model = st.session_state.get("ollama_model") or config.OLLAMA_MODEL or ""
             st.session_state.suricata_rules_dir = "./suricata_rules"
             st.session_state.suricata_enabled = True
             st.session_state.suricata_dry_run = True
@@ -230,7 +231,7 @@ def show() -> None:
         ollama_model = st.text_input(
             "Ollama model name",
             value=st.session_state.get("ollama_model", default_ollama_model),
-            placeholder="Example: phi4-mini",
+            placeholder="Any model you pulled with 'ollama pull' (leave blank to skip AI)",
         )
         webhook_url = st.text_input(
             "Notification webhook URL (optional)",
@@ -271,8 +272,6 @@ def show() -> None:
             errors.append("Database path is required.")
         if not ollama_endpoint.strip():
             errors.append("Ollama endpoint is required.")
-        if not ollama_model.strip():
-            errors.append("Ollama model name is required.")
         if ollama_model.strip() and not is_valid_model_name(ollama_model.strip()):
             errors.append("Ollama model name can only contain letters, digits, '.', '_', ':', '/' and '-'.")
         if ollama_endpoint.strip() and not is_valid_service_url(ollama_endpoint.strip()):

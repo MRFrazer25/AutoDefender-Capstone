@@ -136,7 +136,7 @@ cd "C:\Users\<your-username>\AutoDefender-Capstone"
 $env:SURICATA_ENABLED = "true"
 $env:SURICATA_DRY_RUN = "true"  # Safe testing - won't write real rules
 $env:AUTO_APPROVE_SURICATA = "false"  # Manual approval
-$env:OLLAMA_MODEL = "phi4-mini"
+$env:OLLAMA_MODEL = "<model>"  # Optional: any model you pulled
 ```
 
 **Linux/Mac:**
@@ -146,24 +146,24 @@ cd ~/AutoDefender-Capstone
 export SURICATA_ENABLED=true
 export SURICATA_DRY_RUN=true
 export AUTO_APPROVE_SURICATA=false
-export OLLAMA_MODEL=phi4-mini
+export OLLAMA_MODEL=<model>  # Optional: any model you pulled
 ```
 
 ### Step 2: Start AutoDefender Monitoring
 
 **Windows:**
 ```powershell
-python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model phi4-mini
+python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model <model>
 ```
 
 **Linux:**
 ```bash
-python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
+python main.py --monitor /var/log/suricata/eve.json --model <model>
 ```
 
 **Mac:**
 ```bash
-python main.py --monitor /usr/local/var/log/suricata/eve.json --model phi4-mini
+python main.py --monitor /usr/local/var/log/suricata/eve.json --model <model>
 ```
 
 ### Step 3: Generate Test Traffic

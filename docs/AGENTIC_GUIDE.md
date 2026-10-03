@@ -41,7 +41,7 @@ $env:SURICATA_DRY_RUN="true"
 $env:SURICATA_RULES_DIR="./suricata_rules"
 $env:AUTO_APPROVE_SURICATA="false"
 
-python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model phi4-mini
+python main.py --monitor "C:\Program Files\Suricata\log\eve.json" --model <model>
 ```
 
 **Linux/Mac:**
@@ -51,7 +51,7 @@ export SURICATA_DRY_RUN=true
 export SURICATA_RULES_DIR=./suricata_rules
 export AUTO_APPROVE_SURICATA=false
 
-python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
+python main.py --monitor /var/log/suricata/eve.json --model <model>
 ```
 
 ### What to Expect
@@ -138,7 +138,7 @@ In the web console, the Setup and Settings pages override these for your browser
 export SURICATA_ENABLED=true
 export SURICATA_DRY_RUN=true
 export AUTO_APPROVE_SURICATA=false
-python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
+python main.py --monitor /var/log/suricata/eve.json --model <model>
 ```
 
 **Result:** Proposed rules are shown and logged but not written.
@@ -149,7 +149,7 @@ python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
 export SURICATA_ENABLED=true
 export SURICATA_DRY_RUN=false
 export AUTO_APPROVE_SURICATA=false
-python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
+python main.py --monitor /var/log/suricata/eve.json --model <model>
 ```
 
 **Result:** Each rule needs your approval before it is written.
@@ -161,7 +161,7 @@ export SURICATA_ENABLED=true
 export SURICATA_DRY_RUN=false
 export AUTO_APPROVE_SURICATA=true
 export AUTODEFENDER_BLOCK_HOURS=24
-python main.py --monitor /var/log/suricata/eve.json --model phi4-mini
+python main.py --monitor /var/log/suricata/eve.json --model <model>
 ```
 
 **Result:** HIGH/CRITICAL threats are blocked without a prompt, and each block is removed after 24 hours. Rules are still limited to one non-whitelisted source IP, and every auto-approval is recorded in the audit log.
@@ -317,4 +317,4 @@ cd "C:\Program Files\Suricata"
 3. **Set a block duration** so blocks don't outlive the IP's owner
 4. **Review Action Management history and the Audit Log page** regularly
 5. **Include `autodefender_custom.rules` in `suricata.yaml`** and reload after changes
-6. **Use a local Ollama model** suited to your hardware (for example `phi4-mini`)
+6. **Pick any local Ollama model** that suits your hardware, or none to use built-in explanations

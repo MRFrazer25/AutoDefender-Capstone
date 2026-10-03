@@ -171,3 +171,13 @@ def test_approving_a_rule_is_audited_and_demo_db_untouched(app_env):
     assert "action_approved" in {e["action"] for e in audit.entries()}
     assert audit.verify() == (True, None)
     assert hashlib.sha256(demo.read_bytes()).hexdigest() == before
+
+
+def test_demo_does_not_pick_an_ai_model(app_env):
+    at = new_app().run()
+    at.text_input[0].input("test-password-for-apptest")
+    at.button[0].click().run()
+    next(b for b in at.button if b.label == "Load demo configuration").click().run()
+    assert not at.exception, errors(at)
+    assert at.session_state["setup_complete"]
+    assert at.session_state["ollama_model"] == ""  # AI stays optional; the user chooses a model

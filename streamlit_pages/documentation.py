@@ -8,7 +8,7 @@ SECTIONS = {
 
 1. **Install prerequisites**: Suricata, Ollama, and the Python dependencies (`pip install -r requirements.txt`).
 2. **Launch the web console**: set `AUTODEFENDER_UI_PASSWORD` (12+ characters), then run `streamlit run streamlit_app.py`.
-3. **Complete the Setup page**: log path(s), database path, and Ollama details. Or click **Load demo configuration**.
+3. **Complete the Setup page**: log path(s), database path, and (optionally) your Ollama endpoint and model. Or click **Load demo configuration**.
 4. **Start monitoring**: on the Dashboard, click **Start monitoring**.
 5. **Investigate**: use Incidents and Threat Analysis, then approve or reject actions in Action Management.
 """,
@@ -74,7 +74,7 @@ SECTIONS = {
   `--ai-severities` flag changes this for historical analysis).
 - AI-suggested drop rules are only accepted if they block exactly the threat's own source IP.
 - Log data is marked as untrusted in prompts, and AI output is shown as plain text, never as links or HTML.
-- Smaller models such as phi4-mini work well for interactive use.
+- Use any model you've pulled with `ollama pull`; smaller models answer faster. Leave the model blank to use only the built-in explanations.
 """,
     "Suricata integration": """
 ### Suricata integration details

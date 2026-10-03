@@ -16,7 +16,7 @@ class Config:
     
     # Ollama settings
     OLLAMA_ENDPOINT = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
-    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", None)  # No default - user must specify
+    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", None)  # No default: AI is optional, any model works
 
     # Notification settings
     WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
