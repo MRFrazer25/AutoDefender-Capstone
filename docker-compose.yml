@@ -42,6 +42,8 @@ services:
       --target /var/log/suricata/eve.json --interval 2 --loop
     volumes:
       - suricata-logs:/var/log/suricata
+    healthcheck:
+      disable: true   # The image's check probes the web console, which this service doesn't run
     security_opt:
       - no-new-privileges:true
     cap_drop:

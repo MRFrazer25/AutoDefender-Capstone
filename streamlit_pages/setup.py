@@ -1,6 +1,7 @@
 """Setup page for initial configuration."""
 
 import logging
+import os
 import re
 import shutil
 import uuid
@@ -16,12 +17,13 @@ from streamlit_pages.session_config import record
 
 logger = logging.getLogger(__name__)
 
-# Uploads are stored inside the project so the path checks accept them
-UPLOAD_DIR = Path("uploads")
+# Uploads and the demo working copy must sit in an allowed folder so the path checks accept them.
+# Both default to the project folder; the Docker image moves them to the writable /data volume.
+UPLOAD_DIR = Path(os.getenv("AUTODEFENDER_UPLOAD_DIR") or "uploads")
 
 DEMO_LOG = Path("demo/example_suricata_log.json")
 DEMO_DB = Path("demo/demo_config.db")
-DEMO_WORKING_DB = Path("demo/generated/demo_session.db")
+DEMO_WORKING_DB = Path(os.getenv("AUTODEFENDER_DEMO_DB") or "demo/generated/demo_session.db")
 
 
 def _save_upload(uploaded_file, allowed_suffixes: set) -> Path:
@@ -32,7 +34,7 @@ def _save_upload(uploaded_file, allowed_suffixes: set) -> Path:
     suffix = Path(uploaded_file.name).suffix.lower()
     if suffix not in allowed_suffixes:
         raise ValueError(f"File type {suffix or '(none)'} is not allowed")
-    UPLOAD_DIR.mkdir(exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     saved_path = UPLOAD_DIR / f"{uuid.uuid4().hex}{suffix}"
     with open(saved_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
@@ -79,7 +81,7 @@ def show() -> None:
             st.session_state.ollama_endpoint = st.session_state.get("ollama_endpoint") or config.OLLAMA_ENDPOINT
             # Keep whatever model the user already chose (none = built-in explanations)
             st.session_state.ollama_model = st.session_state.get("ollama_model") or config.OLLAMA_MODEL or ""
-            st.session_state.suricata_rules_dir = "./suricata_rules"
+            st.session_state.suricata_rules_dir = config.SURICATA_RULES_DIR
             st.session_state.suricata_enabled = True
             st.session_state.suricata_dry_run = True
             st.session_state.setup_complete = True

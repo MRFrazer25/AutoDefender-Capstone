@@ -18,7 +18,7 @@ def isolated_state(tmp_path, monkeypatch):
     """Keep the audit log and env settings out of the real project files."""
     monkeypatch.setenv("AUTODEFENDER_AUDIT_DB", str(tmp_path / "audit.db"))
     for name in ("AUTODEFENDER_UI_PASSWORD", "AUTODEFENDER_DEV", "AUTODEFENDER_ALLOWED_DIRS",
-                 "AUTODEFENDER_GEOIP_CITY_DB", "AUTODEFENDER_GEOIP_ASN_DB"):
+                 "AUTODEFENDER_GEOIP_CITY_DB", "AUTODEFENDER_GEOIP_ASN_DB", "AUTODEFENDER_IP_LISTS"):
         monkeypatch.delenv(name, raising=False)
     yield
 

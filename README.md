@@ -46,7 +46,7 @@ docker compose up -d --build
 docker compose exec ollama ollama pull <model>   # optional; then set OLLAMA_MODEL=<model> in .env
 ```
 
-Open http://localhost:8501 (sign in if you set a password) and start monitoring `/var/log/suricata/eve.json` on the Dashboard. Data (database, audit log, rules) is kept in the `autodefender-data` volume. The console is published on `127.0.0.1` only and Ollama is not exposed at all.
+Open http://localhost:8501 (sign in if you set a password) and start monitoring `/var/log/suricata/eve.json` on the Dashboard. Data (database, audit log, rules, IP lists, uploads, and the demo copy) is kept in the `autodefender-data` volume. The console is published on `127.0.0.1` only and Ollama is not exposed at all.
 
 To watch a real Suricata on a Linux host, remove the `replayer` service and mount the host's log folder read-only on the `autodefender` service: `- /var/log/suricata:/var/log/suricata:ro`. (Docker Desktop on Windows/macOS can't capture host network traffic, so run Suricata itself outside Docker there.)
 

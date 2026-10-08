@@ -254,6 +254,8 @@ alert_cooldown_seconds = 600
             "- `AUTODEFENDER_GEOIP_CITY_DB`, `AUTODEFENDER_GEOIP_ASN_DB` (local GeoLite2 files for offline GeoIP)\n"
             "- `AUTODEFENDER_BLOCK_HOURS` (default block duration, 0 = permanent)\n"
             "- `AUTODEFENDER_AUDIT_DB` (audit log location, default audit.db)\n"
+            "- `AUTODEFENDER_IP_LISTS` (whitelist/blacklist file, default ip_lists.json)\n"
+            "- `AUTODEFENDER_UPLOAD_DIR`, `AUTODEFENDER_DEMO_DB` (uploads folder and demo working copy)\n"
             "- `SURICATA_AUTO_RELOAD`, `SURICATA_SOCKET` (reload rules with suricatasc)\n"
             "- `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `WEBHOOK_URL`\n"
             "- `SURICATA_ENABLED`, `SURICATA_RULES_DIR`, `SURICATA_DRY_RUN`, `AUTO_APPROVE_SURICATA`"

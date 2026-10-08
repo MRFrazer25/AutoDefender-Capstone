@@ -3,10 +3,14 @@
 import ipaddress
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Set, Optional
 
 logger = logging.getLogger(__name__)
+
+# Where the lists are stored when no path is given (the Docker image points this at /data)
+IP_LISTS_ENV = "AUTODEFENDER_IP_LISTS"
 
 
 def normalize_ip(ip: Optional[str]) -> Optional[str]:
@@ -22,14 +26,15 @@ def normalize_ip(ip: Optional[str]) -> Optional[str]:
 class IPManager:
     """Manages IP whitelist and blacklist."""
 
-    def __init__(self, config_path: str = "ip_lists.json"):
+    def __init__(self, config_path: Optional[str] = None):
         """
         Initialize IP manager.
 
         Args:
-            config_path: Path to JSON file storing whitelist/blacklist
+            config_path: Path to JSON file storing whitelist/blacklist.
+                Defaults to AUTODEFENDER_IP_LISTS, else ip_lists.json.
         """
-        self.config_path = Path(config_path)
+        self.config_path = Path(config_path or os.getenv(IP_LISTS_ENV) or "ip_lists.json")
         self.whitelist: Set[str] = set()
         self.blacklist: Set[str] = set()
         self._lists_stamp: Optional[tuple[int, int]] = None

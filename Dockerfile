@@ -21,9 +21,12 @@ COPY --chown=autodefender:autodefender . .
 
 USER autodefender
 
-# Writable state lives in /data (mounted as a volume)
+# Writable state lives in /data (mounted as a volume); /app is owned by root and stays read-only
 ENV AUTODEFENDER_DB_PATH=/data/autodefender.db \
     AUTODEFENDER_AUDIT_DB=/data/audit.db \
+    AUTODEFENDER_IP_LISTS=/data/ip_lists.json \
+    AUTODEFENDER_UPLOAD_DIR=/data/uploads \
+    AUTODEFENDER_DEMO_DB=/data/demo_session.db \
     SURICATA_RULES_DIR=/data/suricata_rules \
     AUTODEFENDER_ALLOWED_DIRS=/data
 
