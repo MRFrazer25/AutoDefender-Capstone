@@ -41,9 +41,9 @@ AutoDefender started as my senior year college capstone project in fall 2025. I 
 The quickest way to try everything (AutoDefender, a local Ollama, and a replayer that feeds the sample Suricata log):
 
 ```bash
-cp .env.example .env        # optional: set AUTODEFENDER_UI_PASSWORD in .env to require sign-in
+cp .env.example .env        # then set AUTODEFENDER_UI_PASSWORD to your own long password, or delete that line for an open console
 docker compose up -d --build
-docker compose exec ollama ollama pull <model>   # optional; then set OLLAMA_MODEL=<model> in .env
+docker compose exec ollama ollama pull <model>   # optional; then set OLLAMA_MODEL=<model> in .env and run docker compose up -d again
 ```
 
 Open http://localhost:8501 (sign in if you set a password) and start monitoring `/var/log/suricata/eve.json` on the Dashboard. Data (database, audit log, rules, IP lists, uploads, and the demo copy) is kept in the `autodefender-data` volume. The console is published on `127.0.0.1` only and Ollama is not exposed at all.
