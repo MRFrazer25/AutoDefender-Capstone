@@ -4,6 +4,8 @@ An AI-powered security tool that monitors Suricata network logs in real-time and
 
 **Try it online**: [https://autodefender.streamlit.app/](https://autodefender.streamlit.app/)
 
+![AutoDefender web console Threat Analysis page, showing severity filters, threat counts and the threat table with MITRE ATT&CK mappings](docs/screenshot.png)
+
 ## About This Project
 
 AutoDefender started as my senior year college capstone project in fall 2025. I still maintain it and update it from time to time with security fixes, more realistic detection, and new features.
