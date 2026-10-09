@@ -168,17 +168,37 @@ python main.py --monitor /usr/local/var/log/suricata/eve.json --model <model>
 
 ### Step 3: Generate Test Traffic
 
-The standard Suricata check is a request to `testmynids.org`, which returns a response that the default ruleset flags ("GPL ATTACK_RESPONSE id check returned root"):
+The quickest check is a one-line test rule that alerts on a request you make yourself, so it doesn't depend on any outside test site. Save this rule to a file named `autodefender-test.rules`:
+
+```
+alert http any any -> any any (msg:"AutoDefender test alert"; flow:to_server; http.uri; content:"/autodefender-test"; priority:2; sid:1000001; rev:1;)
+```
+
+Restart Suricata with `-s` added, which loads that file on top of your normal rules (use the full path to the file):
 
 **Windows:**
 ```powershell
-Invoke-WebRequest -Uri "http://testmynids.org/uid/index.html" -UseBasicParsing
+.\suricata.exe -c suricata.yaml -i "Wi-Fi" -s "C:\path\to\autodefender-test.rules"
 ```
 
 **Linux/Mac:**
 ```bash
-curl http://testmynids.org/uid/index.html
+sudo suricata -c /etc/suricata/suricata.yaml -i eth0 -s /path/to/autodefender-test.rules
 ```
+
+Then make a plain HTTP request whose path contains `/autodefender-test`. The site just has to answer over `http://` (a 404 is fine):
+
+**Windows:**
+```powershell
+curl.exe http://example.com/autodefender-test
+```
+
+**Linux/Mac:**
+```bash
+curl http://example.com/autodefender-test
+```
+
+AutoDefender should show a MEDIUM threat named "Suricata Alert: AutoDefender test alert". Remove `-s ...` when you're done testing.
 
 To test port scan detection, scan a device on your own network that you own (for example `nmap -p 1-1000 192.168.1.50`). Scanning `localhost` won't work, because Suricata watching your network interface doesn't see loopback traffic. Only scan devices you have permission to scan.
 
