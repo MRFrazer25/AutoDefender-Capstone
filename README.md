@@ -550,3 +550,7 @@ python main.py --analyze demo/example_suricata_log.json \
 ```bash
 python main.py --analyze demo/example_suricata_log.json --search "SSH" --export ssh_threats.json
 ```
+
+## License
+
+MIT License - see the [LICENSE](LICENSE) file for details.
