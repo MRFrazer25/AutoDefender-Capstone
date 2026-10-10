@@ -1,5 +1,6 @@
 """Race-safe approvals, CLI approval failures, webhook targets, data minimization, and AI backlog."""
 
+import logging
 import socket
 import threading
 from datetime import datetime, timezone
@@ -9,6 +10,7 @@ from autodefender.config import Config
 from autodefender.database import Database
 from autodefender.models import Action, Threat
 from autodefender.monitor import RealTimeMonitor
+from autodefender.notifications import webhook
 from autodefender.notifications.webhook import is_valid_webhook_url
 from autodefender.parser import minimal_event
 
@@ -138,6 +140,47 @@ def test_webhook_hostnames_must_resolve_to_public_addresses(monkeypatch):
                 "https://hooks.slack.com:99999/x"):
         assert not is_valid_webhook_url(url), url
 
+
+
+def test_webhook_connects_to_the_address_it_checked(monkeypatch):
+    """A DNS answer that flips to a private address after the check can't redirect the request."""
+    answers = iter([[PUBLIC_IP]])  # first lookup: public; any later lookup: private
+    def getaddrinfo(host, port, *args, **kwargs):
+        ips = next(answers, ["127.0.0.1"])
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port)) for ip in ips]
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+
+    sent = {}
+    class FakeClient:
+        def __init__(self, **kwargs):
+            sent["client"] = kwargs
+        def __enter__(self):
+            return self
+        def __exit__(self, *exc):
+            return False
+        def post(self, url, json, headers, extensions):
+            sent.update(url=url, headers=headers, extensions=extensions)
+            return webhook.httpx.Response(200, request=webhook.httpx.Request("POST", url))
+    monkeypatch.setattr(webhook.httpx, "Client", FakeClient)
+
+    assert webhook.send_webhook({"text": "hi"}, "https://hooks.slack.com/services/x")
+    assert sent["url"] == f"https://{PUBLIC_IP}/services/x"  # the checked address, not a new lookup
+    assert sent["headers"] == {"Host": "hooks.slack.com"}
+    assert sent["extensions"] == {"sni_hostname": "hooks.slack.com"}  # certificate still checked for the real name
+    assert sent["client"]["follow_redirects"] is False
+
+
+def test_webhook_url_is_never_logged(monkeypatch, caplog):
+    """Webhook URLs are secrets, so neither our code nor httpx may write them to the log."""
+    _fake_dns(monkeypatch, {"hooks.slack.com": [PUBLIC_IP]})
+    secret = "T000/B000/secret-token-123"
+    transport = webhook.httpx.MockTransport(lambda request: webhook.httpx.Response(500))
+    real_client = webhook.httpx.Client
+    monkeypatch.setattr(webhook.httpx, "Client", lambda **kw: real_client(transport=transport, **kw))
+    with caplog.at_level(logging.DEBUG):
+        assert not webhook.send_webhook({"text": "hi"}, f"https://hooks.slack.com/services/{secret}")
+    assert "secret-token-123" not in caplog.text
+    assert "failed with HTTP 500" in caplog.text
 
 def test_minimal_event_drops_browsing_data():
     event = {
