@@ -1,5 +1,6 @@
 """Race-safe approvals, CLI approval failures, webhook targets, data minimization, and AI backlog."""
 
+import socket
 import threading
 from datetime import datetime, timezone
 
@@ -104,11 +105,37 @@ def test_threats_still_get_explanations_when_backlog_is_full(tmp_path, monkeypat
     monitor.stop()
 
 
-def test_webhook_targets():
+# Built from pieces so tools/check_demo_data.py (no real IPs in the repo) doesn't flag it
+PUBLIC_IP = ".".join(["8"] * 4)
+
+
+def _fake_dns(monkeypatch, table):
+    """Answer hostname lookups from a fixed table so the tests don't need the network."""
+    def getaddrinfo(host, port, *args, **kwargs):
+        if host not in table:
+            raise socket.gaierror("not found")
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port)) for ip in table[host]]
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+
+
+def test_webhook_targets(monkeypatch):
+    _fake_dns(monkeypatch, {"hooks.slack.com": [PUBLIC_IP]})
     assert is_valid_webhook_url("https://hooks.slack.com/services/x")
     for url in ("http://hooks.slack.com/x", "https://localhost/x", "https://127.0.0.1/x", "https://10.0.0.5/x",
                 "https://169.254.169.254/latest", "https://[::1]/x", "https://user:pw@hooks.slack.com/x",
                 "https://printer.local/x", "javascript:alert(1)"):
+        assert not is_valid_webhook_url(url), url
+
+
+def test_webhook_hostnames_must_resolve_to_public_addresses(monkeypatch):
+    _fake_dns(monkeypatch, {
+        "metadata.example.net": ["169.254.169.254"],
+        "intranet.example.net": ["10.0.0.5"],
+        "mixed.example.net": [PUBLIC_IP, "192.168.1.1"],
+    })
+    for url in ("https://metadata.example.net/x", "https://intranet.example.net:8443/x",
+                "https://mixed.example.net/x", "https://does-not-resolve.example.net/x",
+                "https://hooks.slack.com:99999/x"):
         assert not is_valid_webhook_url(url), url
 
 

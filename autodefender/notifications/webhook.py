@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 import logging
 import os
+import socket
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -32,7 +33,21 @@ def is_valid_webhook_url(url: str) -> bool:
     try:
         return ipaddress.ip_address(host).is_global
     except ValueError:
-        return True  # A hostname, not an IP literal
+        pass  # A hostname, not an IP literal
+    # A hostname can still point at a private address (e.g. a DNS name for 127.0.0.1),
+    # so resolve it and require every address it maps to be public.
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)
+    except (OSError, UnicodeError, ValueError):
+        return False
+    addresses = set()
+    for info in infos:
+        try:
+            # Drop any IPv6 zone id ("fe80::1%eth0") before parsing
+            addresses.add(ipaddress.ip_address(str(info[4][0]).split("%")[0]))
+        except ValueError:
+            return False
+    return bool(addresses) and all(address.is_global for address in addresses)
 
 
 def send_webhook(payload: Dict[str, Any], url: Optional[str] = None) -> bool:
@@ -42,7 +57,7 @@ def send_webhook(payload: Dict[str, Any], url: Optional[str] = None) -> bool:
         logger.debug("Webhook URL not configured. Skipping notification.")
         return False
     if not is_valid_webhook_url(url):
-        logger.error("Webhook URL must start with https://. Skipping notification.")
+        logger.error("Webhook URL must be https and point at a public host. Skipping notification.")
         return False
     try:
         response = httpx.post(url, json=payload, timeout=5.0, follow_redirects=False)
